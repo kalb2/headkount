@@ -347,7 +347,7 @@ test("smart-group loading accepts documented response and rejects malformed succ
     /smartGroups is missing/,
   );
 });
-test("pagination detects repeated pages and offsets instead of silently duplicating data", async () => {
+test("pagination detects repeated pages and tolerates echoed current offsets", async () => {
   await assert.rejects(
     () =>
       collectPages("k", "/jobs", "jobs", {
@@ -356,26 +356,31 @@ test("pagination detects repeated pages and offsets instead of silently duplicat
       }),
     /repeated a page/,
   );
-  await assert.rejects(
-    () =>
-      collectPages("k", "/jobs", "jobs", {
-        request: async () => ({
-          data: { jobs: [{ jobId: "a" }] },
-          paging: { offset: 0 },
-        }),
-      }),
-    /pagination offset/,
-  );
+
+  const echoedPaths = [];
+  const echoed = await collectPages("k", "/jobs", "jobs", {
+    limit: 1,
+    request: async (k, p) => {
+      echoedPaths.push(p);
+      return echoedPaths.length === 1
+        ? { data: { jobs: [{ jobId: "a" }] }, paging: { offset: 0 } }
+        : { data: { jobs: [] }, paging: { offset: 1 } };
+    },
+  });
+  assert.deepEqual(echoed.rows, [{ jobId: "a" }]);
+  assert.match(echoedPaths[1], /offset=1/);
+
   const paths = [];
   const r = await collectPages("k", "/jobs", "jobs", {
+    limit: 1,
     request: async (k, p) => {
       paths.push(p);
       return paths.length === 1
         ? { data: { jobs: [{ jobId: "a" }] }, paging: { offset: 12 } }
-        : { data: { jobs: [{ jobId: "b" }] } };
+        : { data: { jobs: [] } };
     },
   });
-  assert.equal(r.rows.length, 2);
+  assert.equal(r.rows.length, 1);
   assert.match(paths[1], /offset=12/);
 });
 test("dropdown null never becomes option zero", () => {
