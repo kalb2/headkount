@@ -33,7 +33,9 @@ Assigning several smart groups does not implement a Door AND Brand eligibility e
 
 On a door, brand, or repair group list, open **Create smart group**. Enter a unique name, pick an existing segment or enter a new segment name and color, and optionally add dropdown-field filters. Add the group to the list and leave it checked, alongside any existing groups. Preview, then apply.
 
-The apply creates the segment (if needed) and the smart group, reads them back, and only then writes the door or brand assignment with the new group ID. A name conflict, invalid segment, or invalid dropdown option fails in preview, or on apply with the Connecteam request ID, before the job write. If the group is created and a later job write fails, the group is kept; select it as an existing group to retry. Membership filters are sent as `filters.dropdownFilters[].fieldId`. An empty filter list still creates the named group. The group read model does not return filters, so readback confirms the id, name, and segment.
+The apply creates the segment (if needed) and the smart group, reads them back, and only then writes the door or brand assignment with the new group ID. The new group is added to the picker immediately, including when you refresh. A name conflict, invalid segment, or invalid dropdown option fails in preview, or on apply with the Connecteam request ID, before the job write. If the group is created and a later job write fails, the group is kept; select it as an existing group to retry. Membership filters are sent as `filters.dropdownFilters[].fieldId`. An empty filter list still creates the named group. The group read model does not return filters, so readback confirms the id, name, and segment.
+
+An empty smart-group list is a normal account state: the app shows **Create smart group** and does not call the list unavailable. A permission or API-key failure is the case that blocks creation, and that message includes the Connecteam request ID.
 
 ## Safe repairs
 

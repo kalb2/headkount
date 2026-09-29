@@ -129,6 +129,22 @@ globalThis.fetch = async (input, options = {}) => {
         }),
         { status: 403 },
       );
+    if (key === "test-groups-shape" && method !== "POST")
+      return new Response(
+        JSON.stringify({ requestId: "groups-shape", data: { users: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    if (key === "test-openapi-groups" && method !== "POST")
+      return response({
+        groups: [
+          {
+            id: 9,
+            name: "Live shape",
+            groupSegmentId: 7,
+            numberOfUsers: 1,
+          },
+        ],
+      });
     if (method === "POST") {
       const duplicate = state.smartGroups.some(
         (group) => group.name.toLowerCase() === body.name.toLowerCase(),

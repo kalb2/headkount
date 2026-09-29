@@ -12,16 +12,29 @@ export async function POST(req) {
   try {
     const { apiKey } = await req.json();
     const warnings = [];
+    const failure = (label, error) => {
+      const requestId = error.payload?.requestId;
+      const described = {
+        message: error.message,
+        httpStatus: error.status || 500,
+        requestId:
+          typeof requestId === "string" && requestId ? requestId : null,
+      };
+      warnings.push(
+        `${label}: ${described.message}${described.requestId ? ` Request ID: ${described.requestId}.` : ""}${error.payload ? ` — ${JSON.stringify(error.payload)}` : ""}`,
+      );
+      return described;
+    };
     const optional = async (label, fn, fallback) => {
       try {
         return await fn();
       } catch (e) {
-        warnings.push(
-          `${label}: ${e.message}${e.payload ? ` — ${JSON.stringify(e.payload)}` : ""}`,
-        );
+        failure(label, e);
         return fallback;
       }
     };
+    let smartGroupsError = null;
+    let smartGroupSegmentsError = null;
     const [
       jobs,
       smartGroups,
@@ -37,12 +50,22 @@ export async function POST(req) {
         "/jobs/v1/jobs?includeDeleted=false&sort=title&order=asc",
         "jobs",
       ),
-      optional("Smart groups", () => loadSmartGroups(apiKey), null),
-      optional(
-        "Smart group segments",
-        () => loadSmartGroupSegments(apiKey),
-        null,
-      ),
+      (async () => {
+        try {
+          return await loadSmartGroups(apiKey);
+        } catch (error) {
+          smartGroupsError = failure("Smart groups", error);
+          return null;
+        }
+      })(),
+      (async () => {
+        try {
+          return await loadSmartGroupSegments(apiKey);
+        } catch (error) {
+          smartGroupSegmentsError = failure("Smart group segments", error);
+          return null;
+        }
+      })(),
       optional(
         "Schedules",
         async () =>
@@ -78,8 +101,16 @@ export async function POST(req) {
       jobs: jobs.rows,
       smartGroups: smartGroups || [],
       smartGroupsLoaded: smartGroups !== null,
+      smartGroupsError,
+      smartGroupsBlocked:
+        smartGroupsError?.httpStatus === 401 ||
+        smartGroupsError?.httpStatus === 403,
       smartGroupSegments: smartGroupSegments || [],
       smartGroupSegmentsLoaded: smartGroupSegments !== null,
+      smartGroupSegmentsError,
+      smartGroupSegmentsBlocked:
+        smartGroupSegmentsError?.httpStatus === 401 ||
+        smartGroupSegmentsError?.httpStatus === 403,
       schedulers,
       timeClocks,
       users: users.rows,

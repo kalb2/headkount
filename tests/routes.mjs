@@ -12,7 +12,21 @@ const key = "test-routes";
 let response = await post("/api/snapshot", { apiKey: key });
 assert.equal(response.status, 200);
 assert.equal(response.json.smartGroupsLoaded, true);
+assert.equal(response.json.smartGroupsBlocked, false);
 assert.equal(response.json.smartGroups.length, 3);
+const openApiGroups = await post("/api/snapshot", {
+  apiKey: "test-openapi-groups",
+});
+assert.equal(openApiGroups.status, 200);
+assert.equal(openApiGroups.json.smartGroupsLoaded, true);
+assert.equal(openApiGroups.json.smartGroupsBlocked, false);
+assert.equal(openApiGroups.json.smartGroups[0].name, "Live shape");
+const emptyGroups = await post("/api/snapshot", {
+  apiKey: "test-empty-groups",
+});
+assert.equal(emptyGroups.json.smartGroupsLoaded, true);
+assert.equal(emptyGroups.json.smartGroupsBlocked, false);
+assert.equal(emptyGroups.json.smartGroups.length, 0);
 response = await post("/api/connecteam", {
   apiKey: key,
   path: "/jobs/v1/jobs/door-1",
@@ -65,7 +79,17 @@ response = await post("/api/actions", { apiKey: key, phase: "apply", plan });
 assert.equal(response.status, 409);
 response = await post("/api/snapshot", { apiKey: "test-groups-error" });
 assert.equal(response.json.smartGroupsLoaded, false);
+assert.equal(response.json.smartGroupsBlocked, true);
+assert.equal(response.json.smartGroupsError.requestId, "groups-403");
+assert.equal(response.json.smartGroupsError.httpStatus, 403);
 assert.match(response.json.warnings[0], /groups-403/);
+response = await post("/api/snapshot", { apiKey: "test-groups-shape" });
+assert.equal(response.status, 200);
+assert.equal(response.json.smartGroupsLoaded, false);
+assert.equal(response.json.smartGroupsBlocked, false);
+assert.equal(response.json.smartGroupsError.httpStatus, 502);
+assert.equal(response.json.smartGroupsError.requestId, "groups-shape");
+assert.match(response.json.smartGroupsError.message, /data\.groups/);
 const errorPreview = await post("/api/actions", {
   apiKey: "test-write-error",
   phase: "preview",

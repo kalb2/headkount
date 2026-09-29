@@ -781,11 +781,29 @@ button:disabled {
   cursor: pointer;
 }
 .groupCreate {
-  margin-top: 10px;
+  margin: 0 0 12px;
   padding: 12px;
   border: 1px dashed var(--line);
   border-radius: 10px;
   background: #fff;
+}
+.emptyState {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid #c9dbff;
+  border-radius: 14px;
+  background: #f4f8ff;
+}
+.emptyState p,
+.groupCreate.emptyState p {
+  margin: 8px 0;
+}
+.createHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 .groupCreate .muted,
 .filterBlock .muted {

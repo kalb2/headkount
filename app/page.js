@@ -15,6 +15,107 @@ const dropdownFields = (fields) =>
   (fields || []).filter(
     (field) => field.type === "dropdown" && !field.isDeleted,
   );
+function failureText(error, fallback) {
+  if (!error) return fallback;
+  return `${error.message}${error.requestId ? ` Request ID: ${error.requestId}.` : ""}`;
+}
+function groupBlockMessage(snapshot) {
+  if (snapshot?.smartGroupsBlocked)
+    return failureText(
+      snapshot.smartGroupsError,
+      "Connecteam refused smart-group access.",
+    );
+  if (snapshot?.smartGroupSegmentsBlocked)
+    return failureText(
+      snapshot.smartGroupSegmentsError,
+      "Connecteam refused smart-group segment access.",
+    );
+  return "";
+}
+function groupStatusLabel(snapshot) {
+  if (snapshot.smartGroupsBlocked)
+    return snapshot.smartGroupsError?.requestId
+      ? `Smart groups blocked · ${snapshot.smartGroupsError.requestId}`
+      : "Smart groups blocked";
+  if (!snapshot.smartGroupsLoaded) return "Smart groups could not be loaded";
+  if (!snapshot.smartGroups.length) return "No smart groups yet";
+  const segments = snapshot.smartGroupSegmentsLoaded
+    ? ` · ${snapshot.smartGroupSegments.length} segments`
+    : "";
+  return `${snapshot.smartGroups.length} smart groups${segments}`;
+}
+function adoptCreatedGroups(pending, selectedKeys, selectedIds, smartGroups) {
+  const adoptedIds = [];
+  const dropped = new Set();
+  const kept = [];
+  for (const draft of pending || []) {
+    const saved = (smartGroups || []).find(
+      (group) => group.name === draft.name,
+    );
+    if (!saved) {
+      kept.push(draft);
+      continue;
+    }
+    dropped.add(draft.key);
+    if ((selectedKeys || []).includes(draft.key)) adoptedIds.push(saved.id);
+  }
+  if (!dropped.size)
+    return {
+      pending: pending || [],
+      selectedKeys: selectedKeys || [],
+      selectedIds: selectedIds || [],
+      changed: false,
+    };
+  return {
+    pending: kept,
+    selectedKeys: (selectedKeys || []).filter((key) => !dropped.has(key)),
+    selectedIds: [...new Set([...(selectedIds || []), ...adoptedIds])],
+    changed: true,
+  };
+}
+function mergeSavedGroups(snapshot, report) {
+  if (!snapshot || !report?.results) return snapshot;
+  const groups = [...(snapshot.smartGroups || [])];
+  const segments = [...(snapshot.smartGroupSegments || [])];
+  for (const result of report.results) {
+    if (result.status !== "verified") continue;
+    if (
+      result.groupId &&
+      !groups.some((group) => group.id === result.groupId)
+    ) {
+      const name = String(result.label || "").replace(/^Smart group /, "");
+      groups.push({
+        id: result.groupId,
+        name: name || `Smart group ${result.groupId}`,
+      });
+    }
+    if (
+      result.segmentId &&
+      !segments.some((segment) => segment.id === result.segmentId)
+    ) {
+      const name = String(result.label || "").replace(/^Segment /, "");
+      segments.push({
+        id: result.segmentId,
+        name: name || `Segment ${result.segmentId}`,
+        color: "#3968bb",
+      });
+    }
+  }
+  const addedGroup = groups.length !== (snapshot.smartGroups || []).length;
+  const addedSegment =
+    segments.length !== (snapshot.smartGroupSegments || []).length;
+  return {
+    ...snapshot,
+    smartGroups: groups,
+    smartGroupsLoaded: snapshot.smartGroupsLoaded || addedGroup,
+    smartGroupsBlocked: addedGroup ? false : snapshot.smartGroupsBlocked,
+    smartGroupSegments: segments,
+    smartGroupSegmentsLoaded: snapshot.smartGroupSegmentsLoaded || addedSegment,
+    smartGroupSegmentsBlocked: addedSegment
+      ? false
+      : snapshot.smartGroupSegmentsBlocked,
+  };
+}
 const toggle = (values, id) =>
   values.includes(id) ? values.filter((x) => x !== id) : [...values, id];
 function Button({ kind = "primary", children, ...props }) {
@@ -51,7 +152,9 @@ function Groups({
   segments = [],
   segmentsLoaded = true,
   fields = [],
-  groupsLoaded = true,
+  createBlocked = false,
+  blockMessage = "",
+  listFailed = false,
   pending = [],
   selectedKeys = [],
   onSelectedKeys,
@@ -59,7 +162,7 @@ function Groups({
   onRemovePending,
 }) {
   const [search, setSearch] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(!groups.length && !createBlocked);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [segmentId, setSegmentId] = useState(
@@ -120,90 +223,55 @@ function Groups({
       <legend>
         {label} · {selectedCount} selected
       </legend>
-      <input
-        aria-label={`Search ${label}`}
-        placeholder="Search existing or new smart groups…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      <div className="miniGroupSelect">
-        {filteredPending.map((group) => (
-          <div className="pendingGroup" key={group.key}>
-            <label>
-              <input
-                type="checkbox"
-                checked={selectedKeys.includes(group.key)}
-                onChange={() =>
-                  onSelectedKeys?.(toggle(selectedKeys, group.key))
-                }
-              />
-              <span>
-                {group.name}
-                <small className="badge blue">New</small>
-                <small>
-                  {group.segment
-                    ? `New segment ${group.segment.name}`
-                    : `Segment ${segments.find((segment) => segment.id === group.groupSegmentId)?.name || group.groupSegmentId}`}
-                  {group.dropdownFilters?.length
-                    ? ` · ${group.dropdownFilters.length} filter(s)`
-                    : " · no membership filters"}
-                </small>
-              </span>
-            </label>
-            {onRemovePending && (
-              <button
-                type="button"
-                className="textButton"
-                onClick={() => onRemovePending(group.key)}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
-        {filtered.map((g) => (
-          <label key={g.id}>
-            <input
-              type="checkbox"
-              checked={value.includes(g.id)}
-              onChange={() => onChange(toggle(value, g.id))}
-            />
-            <span>
-              {g.name}
-              <small> #{g.id}</small>
-            </span>
-          </label>
-        ))}
-        {!filtered.length && !filteredPending.length && (
-          <p>No matching smart groups.</p>
-        )}
-      </div>
-      {canCreate && (
-        <div className="groupCreate">
-          <button
-            type="button"
-            className="textButton"
-            onClick={() => setCreating((open) => !open)}
-          >
-            {creating ? "Close group form" : "+ Create smart group"}
-          </button>
-          {creating && !groupsLoaded && (
-            <p className="muted">
-              Smart groups could not be loaded. Refresh before creating one.
-            </p>
-          )}
-          {creating && groupsLoaded && !segmentsLoaded && (
-            <p className="muted">
-              Segments could not be loaded. Refresh before creating a smart
-              group. Existing groups can still be selected.
-            </p>
-          )}
-          {creating && groupsLoaded && segmentsLoaded && (
+      {canCreate && createBlocked && (
+        <Notice tone="danger">
+          <strong>Smart groups are blocked.</strong>
+          <p>{blockMessage}</p>
+          <p>Creating a group stays off until this access error is resolved.</p>
+        </Notice>
+      )}
+      {canCreate && !createBlocked && (
+        <div className={`groupCreate${groups.length ? "" : " emptyState"}`}>
+          {!creating ? (
+            <Button type="button" onClick={() => setCreating(true)}>
+              Create smart group
+            </Button>
+          ) : (
             <>
+              <div className="createHead">
+                <strong>Create smart group</strong>
+                {!!groups.length && (
+                  <button
+                    type="button"
+                    className="textButton"
+                    onClick={() => setCreating(false)}
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+              {!groups.length && !listFailed && (
+                <p className="muted">
+                  No smart groups yet. Add one here, then assign it to a door or
+                  brand. An empty list is not an error.
+                </p>
+              )}
+              {!groups.length && listFailed && (
+                <p className="muted">
+                  The current list could not be read. You can still name a
+                  group, choose a segment, and add filters here.
+                </p>
+              )}
+              {!segmentsLoaded && (
+                <p className="muted">
+                  The segment list could not be loaded. Create a new segment
+                  below, or refresh and choose an existing one.
+                </p>
+              )}
               <p className="muted">
-                The group is created when you apply the preview, then assigned
-                in that same operation. Leave filters empty to create a named
-                group with no dropdown membership rules.
+                The group is created when you apply the preview, then it appears
+                in this list. Leave filters empty to create a named group with
+                no dropdown membership rules.
               </p>
               <Field label="Group name">
                 <input
@@ -372,6 +440,64 @@ function Groups({
           )}
         </div>
       )}
+      <input
+        aria-label={`Search ${label}`}
+        placeholder="Search existing or new smart groups…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      <div className="miniGroupSelect">
+        {filteredPending.map((group) => (
+          <div className="pendingGroup" key={group.key}>
+            <label>
+              <input
+                type="checkbox"
+                checked={selectedKeys.includes(group.key)}
+                onChange={() =>
+                  onSelectedKeys?.(toggle(selectedKeys, group.key))
+                }
+              />
+              <span>
+                {group.name}
+                <small className="badge blue">New</small>
+                <small>
+                  {group.segment
+                    ? `New segment ${group.segment.name}`
+                    : `Segment ${segments.find((segment) => segment.id === group.groupSegmentId)?.name || group.groupSegmentId}`}
+                  {group.dropdownFilters?.length
+                    ? ` · ${group.dropdownFilters.length} filter(s)`
+                    : " · no membership filters"}
+                </small>
+              </span>
+            </label>
+            {onRemovePending && (
+              <button
+                type="button"
+                className="textButton"
+                onClick={() => onRemovePending(group.key)}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+        {filtered.map((g) => (
+          <label key={g.id}>
+            <input
+              type="checkbox"
+              checked={value.includes(g.id)}
+              onChange={() => onChange(toggle(value, g.id))}
+            />
+            <span>
+              {g.name}
+              <small> #{g.id}</small>
+            </span>
+          </label>
+        ))}
+        {!filtered.length && !filteredPending.length && (
+          <p>No matching smart groups.</p>
+        )}
+      </div>
     </fieldset>
   );
 }
@@ -391,7 +517,7 @@ async function post(url, body) {
   }
   if (!response.ok)
     throw new Error(
-      `${json.error || "Request failed"}${json.details ? `\n${JSON.stringify(json.details, null, 2)}` : ""}`,
+      `${json.error || "Request failed"}${json.requestId ? ` Request ID: ${json.requestId}.` : ""}${json.details ? `\n${JSON.stringify(json.details, null, 2)}` : ""}`,
     );
   return json;
 }
@@ -488,12 +614,14 @@ export default function Home() {
         plan: submitted,
       });
       setReport(result);
+      setSnapshot((current) => mergeSavedGroups(current, result));
       if (result.complete && submitted.action === "createDoor") {
         setEditor(false);
         setDoor(newDoor());
       }
       try {
-        await refresh();
+        const refreshed = await refresh();
+        setSnapshot(mergeSavedGroups(refreshed, result));
       } catch (e) {
         setError(
           `Results are shown below, but the account refresh failed: ${e.message}`,
@@ -523,7 +651,7 @@ export default function Home() {
       <main className="shell connectShell">
         <section className="connectCard">
           <div className="brandMark">C</div>
-          <span className="badge blue">Operations Manager · V1.4</span>
+          <span className="badge blue">Operations Manager · V1.4.1</span>
           <h1>
             Every door.
             <br />
@@ -564,7 +692,7 @@ export default function Home() {
           <span>C</span>
           <strong>Ops Manager</strong>
         </div>
-        <small className="version">V1.4</small>
+        <small className="version">V1.4.1</small>
         <nav>
           {[
             ["doors", "Doors & brands"],
@@ -603,11 +731,7 @@ export default function Home() {
                 "Door & brand workspace"}
             </strong>
           </div>
-          <span className="status">
-            {snapshot.smartGroupsLoaded
-              ? `${snapshot.smartGroups.length} smart groups${snapshot.smartGroupSegmentsLoaded ? ` · ${snapshot.smartGroupSegments.length} segments` : ""}`
-              : "Smart groups unavailable"}
-          </span>
+          <span className="status">{groupStatusLabel(snapshot)}</span>
         </header>
         {busy && <Notice>{busy}</Notice>}
         {error && (
@@ -651,6 +775,7 @@ export default function Home() {
                 <Doors
                   parents={parents}
                   subJobs={subJobs}
+                  snapshot={snapshot}
                   onCreate={() => setEditor(true)}
                   onManage={setManaged}
                 />
@@ -689,7 +814,7 @@ export default function Home() {
     </main>
   );
 }
-function Doors({ parents, subJobs, onCreate, onManage }) {
+function Doors({ parents, subJobs, snapshot, onCreate, onManage }) {
   const [search, setSearch] = useState("");
   const rows = parents.filter((j) =>
     `${j.title} ${j.code || ""}`.toLowerCase().includes(search.toLowerCase()),
@@ -706,6 +831,7 @@ function Doors({ parents, subJobs, onCreate, onManage }) {
         </div>
         <Button onClick={onCreate}>+ Create door setup</Button>
       </div>
+      <GroupLoadState snapshot={snapshot} onCreate={onCreate} />
       <div className="metricGrid">
         <Metric label="Doors / parent jobs" value={parents.length} />
         <Metric label="Brand sub-jobs" value={subJobs.length} />
@@ -764,6 +890,46 @@ function Doors({ parents, subJobs, onCreate, onManage }) {
     </>
   );
 }
+function GroupLoadState({ snapshot, onCreate }) {
+  const blocked = groupBlockMessage(snapshot);
+  if (blocked)
+    return (
+      <Notice tone="danger">
+        <strong>Smart groups are blocked.</strong>
+        <p>{blocked}</p>
+        <p>Creating a group stays off until this access error is resolved.</p>
+      </Notice>
+    );
+  if (!snapshot.smartGroupsLoaded && snapshot.smartGroupsError)
+    return (
+      <div className="emptyState">
+        <strong>Smart groups could not be loaded.</strong>
+        <p>
+          {failureText(
+            snapshot.smartGroupsError,
+            "The smart-group list failed.",
+          )}
+        </p>
+        <p>
+          This was not a permission error, so you can still create a group and
+          assign it. Refresh to try the list again.
+        </p>
+        <Button onClick={onCreate}>Create smart group</Button>
+      </div>
+    );
+  if (snapshot.smartGroupsLoaded && !snapshot.smartGroups.length)
+    return (
+      <div className="emptyState">
+        <strong>No smart groups yet.</strong>
+        <p>
+          Create one here, then assign it to a door or brand in the same
+          preview. An empty list is not an error.
+        </p>
+        <Button onClick={onCreate}>Create smart group</Button>
+      </div>
+    );
+  return null;
+}
 function Metric({ label, value }) {
   return (
     <div className="metric">
@@ -791,8 +957,11 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const fields = dropdownFields(snapshot.userFields);
   const parentChosen =
     door.parentGroupIds.length || (door.parentNewGroupKeys || []).length;
+  const blocked = !!groupBlockMessage(snapshot);
+  const listFailed = !snapshot.smartGroupsLoaded && !!snapshot.smartGroupsError;
+  const createFirst = !blocked && !groups.length;
   const valid =
-    snapshot.smartGroupsLoaded &&
+    !blocked &&
     door.title.trim() &&
     door.instanceIds.length &&
     door.subJobs.length &&
@@ -820,6 +989,67 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
       })),
     }));
   }
+  useEffect(() => {
+    setDoor((current) => {
+      const parent = adoptCreatedGroups(
+        current.newGroups,
+        current.parentNewGroupKeys,
+        current.parentGroupIds,
+        snapshot.smartGroups,
+      );
+      let subChanged = false;
+      const subJobs = current.subJobs.map((sub) => {
+        const next = adoptCreatedGroups(
+          current.newGroups,
+          sub.newGroupKeys,
+          sub.groupIds,
+          snapshot.smartGroups,
+        );
+        if (!next.changed) return sub;
+        subChanged = true;
+        return {
+          ...sub,
+          newGroupKeys: next.selectedKeys,
+          groupIds: next.selectedIds,
+        };
+      });
+      if (!parent.changed && !subChanged) return current;
+      return {
+        ...current,
+        newGroups: parent.pending,
+        parentNewGroupKeys: parent.selectedKeys,
+        parentGroupIds: parent.selectedIds,
+        subJobs,
+      };
+    });
+  }, [snapshot.smartGroups, setDoor]);
+  const parentSection = (
+    <>
+      <h3>{createFirst ? "Create a smart group" : "2. Parent eligibility"}</h3>
+      <p className="muted">
+        {createFirst
+          ? "Name the group, pick an existing segment or create one, and add dropdown filters only if membership should depend on them. Add the group and leave it checked, then assign it to this door or a brand."
+          : "Optional if every brand has its own groups. Brands without custom groups inherit these groups, the description, and the location."}
+      </p>
+      <Groups
+        label="Parent smart groups"
+        groups={groups}
+        segments={snapshot.smartGroupSegments || []}
+        segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
+        fields={fields}
+        createBlocked={blocked}
+        blockMessage={groupBlockMessage(snapshot)}
+        listFailed={listFailed}
+        value={door.parentGroupIds}
+        onChange={(v) => set("parentGroupIds", v)}
+        pending={door.newGroups || []}
+        selectedKeys={door.parentNewGroupKeys || []}
+        onSelectedKeys={(keys) => set("parentNewGroupKeys", keys)}
+        onCreatePending={addPending}
+        onRemovePending={removePending}
+      />
+    </>
+  );
   return (
     <>
       <div className="headingRow">
@@ -834,11 +1064,29 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           Back to doors
         </Button>
       </div>
-      {!snapshot.smartGroupsLoaded || !groups.length ? (
+      {blocked ? (
+        <Notice tone="danger">
+          <strong>Smart groups are blocked.</strong>
+          <p>{groupBlockMessage(snapshot)}</p>
+        </Notice>
+      ) : listFailed ? (
         <Notice tone="warning">
-          {snapshot.smartGroupsLoaded
-            ? "The account returned no smart groups. Create one in the lists below, then assign it before previewing."
-            : "Smart groups could not be loaded. Refresh the account before creating a setup."}
+          <strong>Smart groups could not be loaded.</strong>
+          <p>
+            {failureText(
+              snapshot.smartGroupsError,
+              "The smart-group list failed.",
+            )}
+          </p>
+          <p>
+            This was not a permission error. Create a smart group below and
+            assign it. Refresh to try the list again.
+          </p>
+        </Notice>
+      ) : !groups.length ? (
+        <Notice>
+          No smart groups yet. Name one below, choose a segment, and add filters
+          only if you need them. An empty list is not an error.
         </Notice>
       ) : (
         <Notice>
@@ -848,7 +1096,8 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
         </Notice>
       )}
       <div className="panel formPanel">
-        <h3>1. Door details</h3>
+        {createFirst && parentSection}
+        <h3>{createFirst ? "Door details" : "1. Door details"}</h3>
         <div className="formGrid two">
           <Field label="Door / job name">
             <input
@@ -922,27 +1171,8 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             </p>
           )}
         </fieldset>
-        <h3>2. Parent eligibility</h3>
-        <p className="muted">
-          Optional if every brand has its own groups. Brands without custom
-          groups inherit these groups, the description, and the location.
-        </p>
-        <Groups
-          label="Parent smart groups"
-          groups={groups}
-          segments={snapshot.smartGroupSegments || []}
-          segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
-          fields={fields}
-          groupsLoaded={snapshot.smartGroupsLoaded}
-          value={door.parentGroupIds}
-          onChange={(v) => set("parentGroupIds", v)}
-          pending={door.newGroups || []}
-          selectedKeys={door.parentNewGroupKeys || []}
-          onSelectedKeys={(keys) => set("parentNewGroupKeys", keys)}
-          onCreatePending={addPending}
-          onRemovePending={removePending}
-        />
-        <h3>3. Brand sub-jobs</h3>
+        {!createFirst && parentSection}
+        <h3>{createFirst ? "Brand sub-jobs" : "3. Brand sub-jobs"}</h3>
         <p className="muted">
           Each custom assignment uses the door’s description and location at
           creation. Later parent changes will not flow into those custom
@@ -966,7 +1196,9 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                   segments={snapshot.smartGroupSegments || []}
                   segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
                   fields={fields}
-                  groupsLoaded={snapshot.smartGroupsLoaded}
+                  createBlocked={blocked}
+                  blockMessage={groupBlockMessage(snapshot)}
+                  listFailed={listFailed}
                   value={s.groupIds}
                   onChange={(v) => update(i, { groupIds: v })}
                   pending={door.newGroups || []}
@@ -1023,6 +1255,18 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
     [pending, setPending] = useState([]),
     [selectedKeys, setSelectedKeys] = useState([]),
     [adding, setAdding] = useState(false);
+  useEffect(() => {
+    const next = adoptCreatedGroups(
+      pending,
+      selectedKeys,
+      groups,
+      snapshot.smartGroups,
+    );
+    if (!next.changed) return;
+    setPending(next.pending);
+    setSelectedKeys(next.selectedKeys);
+    setGroups(next.selectedIds);
+  }, [snapshot.smartGroups, pending, selectedKeys, groups]);
   if (!parent)
     return (
       <>
@@ -1069,7 +1313,11 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
                 segments={snapshot.smartGroupSegments || []}
                 segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
                 fields={dropdownFields(snapshot.userFields)}
-                groupsLoaded={snapshot.smartGroupsLoaded}
+                createBlocked={!!groupBlockMessage(snapshot)}
+                blockMessage={groupBlockMessage(snapshot)}
+                listFailed={
+                  !snapshot.smartGroupsLoaded && !!snapshot.smartGroupsError
+                }
                 value={groups}
                 onChange={setGroups}
                 pending={pending}
@@ -1093,7 +1341,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
                 settings.
               </p>
               <Button
-                disabled={!name.trim() || !snapshot.smartGroupsLoaded}
+                disabled={!name.trim() || !!groupBlockMessage(snapshot)}
                 onClick={() =>
                   preview("addBrand", {
                     parentId: parent.jobId,
@@ -1133,6 +1381,18 @@ function RepairTable({ snapshot, subJobs, preview }) {
     [groupIds, setGroupIds] = useState([]),
     [pending, setPending] = useState([]),
     [selectedKeys, setSelectedKeys] = useState([]);
+  useEffect(() => {
+    const next = adoptCreatedGroups(
+      pending,
+      selectedKeys,
+      groupIds,
+      snapshot.smartGroups,
+    );
+    if (!next.changed) return;
+    setPending(next.pending);
+    setSelectedKeys(next.selectedKeys);
+    setGroupIds(next.selectedIds);
+  }, [snapshot.smartGroups, pending, selectedKeys, groupIds]);
   const rows = subJobs.filter((s) =>
     `${s.title} ${s.parentTitle}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -1166,7 +1426,11 @@ function RepairTable({ snapshot, subJobs, preview }) {
               segments={snapshot.smartGroupSegments || []}
               segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
               fields={dropdownFields(snapshot.userFields)}
-              groupsLoaded={snapshot.smartGroupsLoaded}
+              createBlocked={!!groupBlockMessage(snapshot)}
+              blockMessage={groupBlockMessage(snapshot)}
+              listFailed={
+                !snapshot.smartGroupsLoaded && !!snapshot.smartGroupsError
+              }
               value={groupIds}
               onChange={setGroupIds}
               pending={pending}
@@ -1292,7 +1556,7 @@ function RepairTable({ snapshot, subJobs, preview }) {
             disabled={
               !active.length ||
               active.length > 100 ||
-              !snapshot.smartGroupsLoaded ||
+              !!groupBlockMessage(snapshot) ||
               (mode !== "inherit" && !groupIds.length && !selectedKeys.length)
             }
             onClick={() =>

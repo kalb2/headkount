@@ -118,10 +118,8 @@ try {
   await disconnect();
   await connect("test-empty-groups");
   await page.getByRole("button", { name: "+ Create door setup" }).click();
-  assert.match(
-    await page.locator("body").innerText(),
-    /returned no smart groups/,
-  );
+  assert.match(await page.locator("body").innerText(), /No smart groups yet/);
+  assert.match(await page.locator("body").innerText(), /Create smart group/);
   assert.equal(
     await page
       .getByRole("button", { name: "Preview complete setup" })
@@ -132,7 +130,8 @@ try {
   await page.getByLabel("West Coast Retail").check();
   await page.getByLabel("Brand 1 name").fill("MEJ");
   const created = page.getByRole("group", { name: "Brand 1 groups" });
-  await created.getByRole("button", { name: "+ Create smart group" }).click();
+  if (await created.getByRole("button", { name: "Create smart group" }).count())
+    await created.getByRole("button", { name: "Create smart group" }).click();
   await created.getByLabel("Group name").fill("Santa Monica Qualified");
   await created.getByLabel("Brand 1 groups segment").selectOption("new");
   await created.getByLabel("New segment name").fill("Stores");
@@ -140,7 +139,9 @@ try {
   await created.getByLabel("Filter 1 field").selectOption("30");
   await created.getByRole("checkbox", { name: "Santa Monica" }).check();
   await created.getByRole("button", { name: "Add group to this list" }).click();
-  await created.getByRole("checkbox", { name: /Santa Monica Qualified/ }).check();
+  await created
+    .getByRole("checkbox", { name: /Santa Monica Qualified/ })
+    .check();
   assert.equal(
     await page
       .getByRole("button", { name: "Preview complete setup" })
@@ -155,16 +156,48 @@ try {
   assert.match(await dialog.innerText(), /Doors: Santa Monica/);
   await dialog.getByRole("button", { name: "Create complete setup" }).click();
   await page.getByText("Operation completed.", { exact: true }).waitFor();
-  assert.match(await page.locator("body").innerText(), /Smart group Santa Monica Qualified: verified/);
-  assert.match(await page.locator("body").innerText(), /Request ID: test-request/);
-  await disconnect();
-  await connect("test-groups-error");
   assert.match(
     await page.locator("body").innerText(),
-    /Smart groups unavailable/,
+    /Smart group Santa Monica Qualified: verified/,
   );
+  assert.match(
+    await page.locator("body").innerText(),
+    /Request ID: test-request/,
+  );
+  assert.match(await page.locator(".status").innerText(), /1 smart groups/);
+  await page.getByRole("button", { name: "+ Create door setup" }).click();
+  await page
+    .getByRole("checkbox", { name: /Santa Monica Qualified/ })
+    .first()
+    .waitFor();
+  await page.getByRole("button", { name: "Back to doors" }).click();
+  await disconnect();
+  await connect("test-groups-error");
+  assert.match(await page.locator("body").innerText(), /Smart groups blocked/);
+  assert.doesNotMatch(await page.locator("body").innerText(), /unavailable/);
+  await page.getByRole("button", { name: "+ Create door setup" }).click();
+  assert.match(
+    await page.locator("body").innerText(),
+    /Smart groups are blocked/,
+  );
+  assert.equal(await page.getByLabel("Group name").count(), 0);
+  await page.getByRole("button", { name: "Back to doors" }).click();
   await page.getByText("Account loaded with 1 warning(s)").click();
   assert.match(await page.locator("body").innerText(), /groups-403/);
+  await disconnect();
+  await connect("test-groups-shape");
+  assert.match(
+    await page.locator("body").innerText(),
+    /Smart groups could not be loaded/,
+  );
+  assert.match(await page.locator("body").innerText(), /groups-shape/);
+  assert.doesNotMatch(
+    await page.locator("body").innerText(),
+    /unavailable|Smart groups are blocked/,
+  );
+  await page.getByRole("button", { name: "Create smart group" }).click();
+  await page.getByLabel("Group name").first().waitFor();
+  assert.match(await page.locator("body").innerText(), /could not be read/);
   await disconnect();
   await connect("test-write-error");
   await page

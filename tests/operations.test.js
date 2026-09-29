@@ -390,16 +390,112 @@ test("expired previews cannot write", async () => {
   );
   assert.equal(m.calls.length, 0);
 });
-test("smart-group loading accepts documented response and rejects malformed success", async () => {
+test("smart-group loading accepts guide and OpenAPI list keys, including an empty list", async () => {
   assert.deepEqual(
     await loadSmartGroups("k", async () => ({
       data: { smartGroups: [{ id: "2", name: "MEJ" }] },
     })),
     [{ id: 2, name: "MEJ" }],
   );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({ data: { groups: [] } })),
+    [],
+  );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({
+      data: { groups: [{ id: 4, name: "OpenAPI" }] },
+    })),
+    [{ id: 4, name: "OpenAPI" }],
+  );
   await assert.rejects(
-    () => loadSmartGroups("k", async () => ({ data: { groups: [] } })),
-    /smartGroups is missing/,
+    () => loadSmartGroups("k", async () => ({ data: { users: [] } })),
+    /smart group list is missing/,
+  );
+});
+test("a smart-group list parse failure still allows create and assign", async () => {
+  const m = mockApi({ groups: [] });
+  const request = async (key, path, opts) => {
+    const method = opts?.method || "GET";
+    if (
+      path.startsWith("/users/v1/smart-groups") &&
+      method === "GET" &&
+      !path.includes("id=")
+    )
+      return { requestId: "groups-shape", data: { users: [] } };
+    return m.request(key, path, opts);
+  };
+  const plan = await previewOperation(
+    "key",
+    "addBrand",
+    {
+      parentId: "parent",
+      title: "Popup",
+      groupIds: [],
+      newGroupKeys: ["g1"],
+      newGroups: [
+        { key: "g1", name: "From unreadable list", groupSegmentId: 7 },
+      ],
+    },
+    request,
+  );
+  const result = await applyOperation("key", plan, request);
+  assert.equal(result.complete, true);
+  assert.equal(result.results[0].groupId, 100);
+});
+test("smart-group permission errors still block planning", async () => {
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          parentId: "parent",
+          title: "Popup",
+          groupIds: [],
+          newGroupKeys: ["g1"],
+          newGroups: [{ key: "g1", name: "Nope", groupSegmentId: 7 }],
+        },
+        async () => {
+          throw new ConnecteamError("GET /users/v1/smart-groups: denied", 403, {
+            requestId: "groups-403",
+          });
+        },
+      ),
+    (error) => {
+      assert.equal(error.status, 403);
+      assert.equal(error.payload.requestId, "groups-403");
+      return true;
+    },
+  );
+});
+test("an empty OpenAPI smart-group list still allows create and assign", async () => {
+  const m = mockApi({ groups: [] });
+  const request = async (key, path, opts) => {
+    const json = await m.request(key, path, opts);
+    if (json?.data?.smartGroups)
+      return { ...json, data: { groups: json.data.smartGroups } };
+    return json;
+  };
+  const plan = await previewOperation(
+    "key",
+    "addBrand",
+    {
+      parentId: "parent",
+      title: "Popup",
+      groupIds: [],
+      newGroupKeys: ["g1"],
+      newGroups: [{ key: "g1", name: "First group", groupSegmentId: 7 }],
+    },
+    request,
+  );
+  const result = await applyOperation("key", plan, request);
+  assert.equal(result.complete, true);
+  assert.equal(result.results[0].groupId, 100);
+  assert.equal(
+    m.calls.filter(
+      (call) => call.method === "POST" && call.path === "/jobs/v1/jobs",
+    ).length,
+    1,
   );
 });
 test("pagination detects repeated pages and tolerates echoed current offsets", async () => {
