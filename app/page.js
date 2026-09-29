@@ -7,8 +7,14 @@ const newDoor = () => ({
   gps: { address: "", latitude: "", longitude: "" },
   instanceIds: [],
   parentGroupIds: [],
-  subJobs: [{ title: "", groupIds: [] }],
+  parentNewGroupKeys: [],
+  newGroups: [],
+  subJobs: [{ title: "", groupIds: [], newGroupKeys: [] }],
 });
+const dropdownFields = (fields) =>
+  (fields || []).filter(
+    (field) => field.type === "dropdown" && !field.isDeleted,
+  );
 const toggle = (values, id) =>
   values.includes(id) ? values.filter((x) => x !== id) : [...values, id];
 function Button({ kind = "primary", children, ...props }) {
@@ -37,23 +43,124 @@ function Notice({ tone = "info", children }) {
     </div>
   );
 }
-function Groups({ groups, value, onChange, label = "Smart groups" }) {
+function Groups({
+  groups,
+  value,
+  onChange,
+  label = "Smart groups",
+  segments = [],
+  segmentsLoaded = true,
+  fields = [],
+  groupsLoaded = true,
+  pending = [],
+  selectedKeys = [],
+  onSelectedKeys,
+  onCreatePending,
+  onRemovePending,
+}) {
   const [search, setSearch] = useState("");
-  const filtered = groups.filter((g) =>
-    `${g.name} ${g.id}`.toLowerCase().includes(search.toLowerCase()),
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [segmentId, setSegmentId] = useState(
+    segments[0] ? String(segments[0].id) : "new",
   );
+  const [segmentName, setSegmentName] = useState("");
+  const [color, setColor] = useState("#3968bb");
+  const [operator, setOperator] = useState("and");
+  const [filters, setFilters] = useState([]);
+  const canCreate = typeof onCreatePending === "function";
+  const query = search.toLowerCase();
+  const filtered = groups.filter((g) =>
+    `${g.name} ${g.id}`.toLowerCase().includes(query),
+  );
+  const filteredPending = pending.filter((g) =>
+    `${g.name} ${g.segment?.name || ""}`.toLowerCase().includes(query),
+  );
+  const selectedCount = value.length + selectedKeys.length;
+  const activeFilters = filters.filter(
+    (filter) => filter.fieldId && filter.optionIds.length,
+  );
+  function resetDraft() {
+    setName("");
+    setDescription("");
+    setSegmentName("");
+    setColor("#3968bb");
+    setOperator("and");
+    setFilters([]);
+    setSegmentId(segments[0] ? String(segments[0].id) : "new");
+  }
+  function addGroup() {
+    const key = crypto.randomUUID();
+    const draft = {
+      key,
+      name: name.trim(),
+      description: description.trim(),
+      operator: activeFilters.length > 1 ? operator : "and",
+    };
+    if (segmentId === "new")
+      draft.segment = { name: segmentName.trim(), color };
+    else draft.groupSegmentId = Number(segmentId);
+    if (activeFilters.length)
+      draft.dropdownFilters = activeFilters.map((filter) => ({
+        fieldId: Number(filter.fieldId),
+        optionIds: filter.optionIds.map(Number),
+      }));
+    onCreatePending(draft);
+    onSelectedKeys?.([...selectedKeys, key]);
+    resetDraft();
+    setCreating(false);
+  }
+  const draftReady =
+    name.trim() &&
+    (segmentId === "new" ? segmentName.trim() && color : segmentId) &&
+    filters.every((filter) => !filter.fieldId || filter.optionIds.length > 0);
   return (
     <fieldset className="groupPicker">
       <legend>
-        {label} · {value.length} selected
+        {label} · {selectedCount} selected
       </legend>
       <input
         aria-label={`Search ${label}`}
-        placeholder="Search existing smart groups…"
+        placeholder="Search existing or new smart groups…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
       <div className="miniGroupSelect">
+        {filteredPending.map((group) => (
+          <div className="pendingGroup" key={group.key}>
+            <label>
+              <input
+                type="checkbox"
+                checked={selectedKeys.includes(group.key)}
+                onChange={() =>
+                  onSelectedKeys?.(toggle(selectedKeys, group.key))
+                }
+              />
+              <span>
+                {group.name}
+                <small className="badge blue">New</small>
+                <small>
+                  {group.segment
+                    ? `New segment ${group.segment.name}`
+                    : `Segment ${segments.find((segment) => segment.id === group.groupSegmentId)?.name || group.groupSegmentId}`}
+                  {group.dropdownFilters?.length
+                    ? ` · ${group.dropdownFilters.length} filter(s)`
+                    : " · no membership filters"}
+                </small>
+              </span>
+            </label>
+            {onRemovePending && (
+              <button
+                type="button"
+                className="textButton"
+                onClick={() => onRemovePending(group.key)}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
         {filtered.map((g) => (
           <label key={g.id}>
             <input
@@ -67,8 +174,204 @@ function Groups({ groups, value, onChange, label = "Smart groups" }) {
             </span>
           </label>
         ))}
-        {!filtered.length && <p>No matching smart groups.</p>}
+        {!filtered.length && !filteredPending.length && (
+          <p>No matching smart groups.</p>
+        )}
       </div>
+      {canCreate && (
+        <div className="groupCreate">
+          <button
+            type="button"
+            className="textButton"
+            onClick={() => setCreating((open) => !open)}
+          >
+            {creating ? "Close group form" : "+ Create smart group"}
+          </button>
+          {creating && !groupsLoaded && (
+            <p className="muted">
+              Smart groups could not be loaded. Refresh before creating one.
+            </p>
+          )}
+          {creating && groupsLoaded && !segmentsLoaded && (
+            <p className="muted">
+              Segments could not be loaded. Refresh before creating a smart
+              group. Existing groups can still be selected.
+            </p>
+          )}
+          {creating && groupsLoaded && segmentsLoaded && (
+            <>
+              <p className="muted">
+                The group is created when you apply the preview, then assigned
+                in that same operation. Leave filters empty to create a named
+                group with no dropdown membership rules.
+              </p>
+              <Field label="Group name">
+                <input
+                  maxLength={128}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Grove — MEJ"
+                />
+              </Field>
+              <Field label="Description (optional)">
+                <input
+                  maxLength={2000}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </Field>
+              <Field label="Segment">
+                <select
+                  aria-label={`${label} segment`}
+                  value={segmentId}
+                  onChange={(e) => setSegmentId(e.target.value)}
+                >
+                  {segments.map((segment) => (
+                    <option key={segment.id} value={segment.id}>
+                      {segment.name}
+                    </option>
+                  ))}
+                  <option value="new">Create a new segment…</option>
+                </select>
+              </Field>
+              {segmentId === "new" && (
+                <div className="formGrid two">
+                  <Field label="New segment name">
+                    <input
+                      maxLength={128}
+                      value={segmentName}
+                      onChange={(e) => setSegmentName(e.target.value)}
+                      placeholder="Doors"
+                    />
+                  </Field>
+                  <Field label="Segment color">
+                    <input
+                      aria-label={`${label} segment color`}
+                      type="color"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                    />
+                  </Field>
+                </div>
+              )}
+              <div className="filterBlock">
+                <strong>Dropdown filters</strong>
+                {!fields.length && (
+                  <p className="muted">
+                    This account has no dropdown custom fields, so the group
+                    will be created without membership filters.
+                  </p>
+                )}
+                {filters.map((filter, index) => {
+                  const field = fields.find(
+                    (item) => item.id === Number(filter.fieldId),
+                  );
+                  const options = (field?.dropdownOptions || []).filter(
+                    (option) => !option.isDeleted && !option.isDisabled,
+                  );
+                  return (
+                    <div className="filterRow" key={index}>
+                      <Field label={`Filter ${index + 1} field`}>
+                        <select
+                          aria-label={`Filter ${index + 1} field`}
+                          value={filter.fieldId}
+                          onChange={(e) =>
+                            setFilters((rows) =>
+                              rows.map((row, rowIndex) =>
+                                rowIndex === index
+                                  ? {
+                                      fieldId: e.target.value,
+                                      optionIds: [],
+                                    }
+                                  : row,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="">Choose a dropdown field</option>
+                          {fields.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {!!options.length && (
+                        <div className="checkGrid">
+                          {options.map((option) => (
+                            <label key={option.id}>
+                              <input
+                                type="checkbox"
+                                checked={filter.optionIds.includes(option.id)}
+                                onChange={() =>
+                                  setFilters((rows) =>
+                                    rows.map((row, rowIndex) =>
+                                      rowIndex === index
+                                        ? {
+                                            ...row,
+                                            optionIds: toggle(
+                                              row.optionIds,
+                                              option.id,
+                                            ),
+                                          }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                              />
+                              <span>{option.value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className="textButton"
+                        onClick={() =>
+                          setFilters((rows) =>
+                            rows.filter((_, rowIndex) => rowIndex !== index),
+                          )
+                        }
+                      >
+                        Remove filter
+                      </button>
+                    </div>
+                  );
+                })}
+                {fields.length > 0 && filters.length < 10 && (
+                  <button
+                    type="button"
+                    className="textButton"
+                    onClick={() =>
+                      setFilters((rows) => [
+                        ...rows,
+                        { fieldId: "", optionIds: [] },
+                      ])
+                    }
+                  >
+                    + Add dropdown filter
+                  </button>
+                )}
+                {activeFilters.length > 1 && (
+                  <Field label="Match filters">
+                    <select
+                      aria-label={`${label} filter operator`}
+                      value={operator}
+                      onChange={(e) => setOperator(e.target.value)}
+                    >
+                      <option value="and">All filters (and)</option>
+                      <option value="or">Any filter (or)</option>
+                    </select>
+                  </Field>
+                )}
+              </div>
+              <Button type="button" disabled={!draftReady} onClick={addGroup}>
+                Add group to this list
+              </Button>
+            </>
+          )}
+        </div>
+      )}
     </fieldset>
   );
 }
@@ -220,15 +523,15 @@ export default function Home() {
       <main className="shell connectShell">
         <section className="connectCard">
           <div className="brandMark">C</div>
-          <span className="badge blue">Operations Manager · V1.3</span>
+          <span className="badge blue">Operations Manager · V1.4</span>
           <h1>
             Every door.
             <br />
             The right brands and people.
           </h1>
           <p>
-            Create a door, connect its brand sub-jobs to existing smart groups,
-            then preview and verify your changes.
+            Create a door, connect its brand sub-jobs to existing or new smart
+            groups, then preview and verify your changes.
           </p>
           <Field
             label="Connecteam API key"
@@ -261,7 +564,7 @@ export default function Home() {
           <span>C</span>
           <strong>Ops Manager</strong>
         </div>
-        <small className="version">V1.3</small>
+        <small className="version">V1.4</small>
         <nav>
           {[
             ["doors", "Doors & brands"],
@@ -302,7 +605,7 @@ export default function Home() {
           </div>
           <span className="status">
             {snapshot.smartGroupsLoaded
-              ? `${snapshot.smartGroups.length} smart groups loaded`
+              ? `${snapshot.smartGroups.length} smart groups${snapshot.smartGroupSegmentsLoaded ? ` · ${snapshot.smartGroupSegments.length} segments` : ""}`
               : "Smart groups unavailable"}
           </span>
         </header>
@@ -485,16 +788,38 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
       "subJobs",
       door.subJobs.map((s, index) => (index === i ? { ...s, ...patch } : s)),
     );
+  const fields = dropdownFields(snapshot.userFields);
+  const parentChosen =
+    door.parentGroupIds.length || (door.parentNewGroupKeys || []).length;
   const valid =
     snapshot.smartGroupsLoaded &&
-    groups.length > 0 &&
     door.title.trim() &&
     door.instanceIds.length &&
     door.subJobs.length &&
     door.subJobs.every(
       (s) =>
-        s.title.trim() && (s.groupIds.length || door.parentGroupIds.length),
+        s.title.trim() &&
+        (s.groupIds.length || (s.newGroupKeys || []).length || parentChosen),
     );
+  function addPending(draft) {
+    setDoor((current) => ({
+      ...current,
+      newGroups: [...(current.newGroups || []), draft],
+    }));
+  }
+  function removePending(key) {
+    setDoor((current) => ({
+      ...current,
+      newGroups: (current.newGroups || []).filter((group) => group.key !== key),
+      parentNewGroupKeys: (current.parentNewGroupKeys || []).filter(
+        (item) => item !== key,
+      ),
+      subJobs: current.subJobs.map((sub) => ({
+        ...sub,
+        newGroupKeys: (sub.newGroupKeys || []).filter((item) => item !== key),
+      })),
+    }));
+  }
   return (
     <>
       <div className="headingRow">
@@ -512,15 +837,14 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
       {!snapshot.smartGroupsLoaded || !groups.length ? (
         <Notice tone="warning">
           {snapshot.smartGroupsLoaded
-            ? "The account returned no smart groups."
-            : "Smart groups could not be loaded."}{" "}
-          Refresh the account before creating a setup.
+            ? "The account returned no smart groups. Create one in the lists below, then assign it before previewing."
+            : "Smart groups could not be loaded. Refresh the account before creating a setup."}
         </Notice>
       ) : (
         <Notice>
-          {groups.length} existing smart groups available. Selecting several
-          groups adds those groups; it does not calculate a Door AND Brand
-          intersection.
+          {groups.length} existing smart groups available. Select them or create
+          a new group in the same list. Selecting several groups adds those
+          groups; it does not calculate a Door AND Brand intersection.
         </Notice>
       )}
       <div className="panel formPanel">
@@ -606,8 +930,17 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
         <Groups
           label="Parent smart groups"
           groups={groups}
+          segments={snapshot.smartGroupSegments || []}
+          segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
+          fields={fields}
+          groupsLoaded={snapshot.smartGroupsLoaded}
           value={door.parentGroupIds}
           onChange={(v) => set("parentGroupIds", v)}
+          pending={door.newGroups || []}
+          selectedKeys={door.parentNewGroupKeys || []}
+          onSelectedKeys={(keys) => set("parentNewGroupKeys", keys)}
+          onCreatePending={addPending}
+          onRemovePending={removePending}
         />
         <h3>3. Brand sub-jobs</h3>
         <p className="muted">
@@ -630,11 +963,20 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 <Groups
                   label={`Brand ${i + 1} groups`}
                   groups={groups}
+                  segments={snapshot.smartGroupSegments || []}
+                  segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
+                  fields={fields}
+                  groupsLoaded={snapshot.smartGroupsLoaded}
                   value={s.groupIds}
                   onChange={(v) => update(i, { groupIds: v })}
+                  pending={door.newGroups || []}
+                  selectedKeys={s.newGroupKeys || []}
+                  onSelectedKeys={(keys) => update(i, { newGroupKeys: keys })}
+                  onCreatePending={addPending}
+                  onRemovePending={removePending}
                 />
                 <small>
-                  {s.groupIds.length
+                  {s.groupIds.length || (s.newGroupKeys || []).length
                     ? "Custom smart-group assignment"
                     : "Inherits parent groups, description and location"}
                 </small>
@@ -657,7 +999,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
         <Button
           kind="ghost"
           onClick={() =>
-            set("subJobs", [...door.subJobs, { title: "", groupIds: [] }])
+            set("subJobs", [
+              ...door.subJobs,
+              { title: "", groupIds: [], newGroupKeys: [] },
+            ])
           }
         >
           + Add brand
@@ -675,6 +1020,8 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
   const [name, setName] = useState(""),
     [groups, setGroups] = useState([]),
+    [pending, setPending] = useState([]),
+    [selectedKeys, setSelectedKeys] = useState([]),
     [adding, setAdding] = useState(false);
   if (!parent)
     return (
@@ -719,8 +1066,26 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
               <Groups
                 label="New brand groups"
                 groups={snapshot.smartGroups}
+                segments={snapshot.smartGroupSegments || []}
+                segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
+                fields={dropdownFields(snapshot.userFields)}
+                groupsLoaded={snapshot.smartGroupsLoaded}
                 value={groups}
                 onChange={setGroups}
+                pending={pending}
+                selectedKeys={selectedKeys}
+                onSelectedKeys={setSelectedKeys}
+                onCreatePending={(draft) =>
+                  setPending((current) => [...current, draft])
+                }
+                onRemovePending={(key) => {
+                  setPending((current) =>
+                    current.filter((group) => group.key !== key),
+                  );
+                  setSelectedKeys((current) =>
+                    current.filter((item) => item !== key),
+                  );
+                }}
               />
               <p className="muted">
                 With custom groups, the new brand copies the door’s description
@@ -734,6 +1099,8 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
                     parentId: parent.jobId,
                     title: name,
                     groupIds: groups,
+                    newGroupKeys: selectedKeys,
+                    newGroups: pending,
                   })
                 }
               >
@@ -763,7 +1130,9 @@ function RepairTable({ snapshot, subJobs, preview }) {
   const [search, setSearch] = useState(""),
     [selected, setSelected] = useState([]),
     [mode, setMode] = useState("add"),
-    [groupIds, setGroupIds] = useState([]);
+    [groupIds, setGroupIds] = useState([]),
+    [pending, setPending] = useState([]),
+    [selectedKeys, setSelectedKeys] = useState([]);
   const rows = subJobs.filter((s) =>
     `${s.title} ${s.parentTitle}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -794,8 +1163,26 @@ function RepairTable({ snapshot, subJobs, preview }) {
             <Groups
               label="Groups to apply"
               groups={snapshot.smartGroups}
+              segments={snapshot.smartGroupSegments || []}
+              segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
+              fields={dropdownFields(snapshot.userFields)}
+              groupsLoaded={snapshot.smartGroupsLoaded}
               value={groupIds}
               onChange={setGroupIds}
+              pending={pending}
+              selectedKeys={selectedKeys}
+              onSelectedKeys={setSelectedKeys}
+              onCreatePending={(draft) =>
+                setPending((current) => [...current, draft])
+              }
+              onRemovePending={(key) => {
+                setPending((current) =>
+                  current.filter((group) => group.key !== key),
+                );
+                setSelectedKeys((current) =>
+                  current.filter((item) => item !== key),
+                );
+              }}
             />
           )}
         </div>
@@ -906,14 +1293,16 @@ function RepairTable({ snapshot, subJobs, preview }) {
               !active.length ||
               active.length > 100 ||
               !snapshot.smartGroupsLoaded ||
-              (mode !== "inherit" && !groupIds.length)
+              (mode !== "inherit" && !groupIds.length && !selectedKeys.length)
             }
             onClick={() =>
               preview("repairSubJobs", {
+                newGroups: pending,
                 repairs: active.map((jobId) => ({
                   jobId,
                   mode,
                   groupIds: mode === "inherit" ? [] : groupIds,
+                  newGroupKeys: mode === "inherit" ? [] : selectedKeys,
                 })),
               })
             }
@@ -1083,14 +1472,33 @@ function AssignmentSummary({ value, groups }) {
   return (
     <span>
       {(value?.groupIds || [])
-        .map(
-          (id) =>
-            groups.find((g) => g.id === Number(id))?.name || `Group ${id}`,
-        )
+        .map((id) => {
+          const group = groups.find((item) => item.id === Number(id));
+          if (!group) return `Group ${id}`;
+          return group.pending ? `${group.name} (new)` : group.name;
+        })
         .join(", ") || "No groups"}
       <small>{value?.userIds?.length || 0} directly assigned users</small>
     </span>
   );
+}
+function groupCreatePayload(spec) {
+  return {
+    name: spec.name,
+    ...(spec.description ? { description: spec.description } : {}),
+    groupSegmentId: spec.groupSegmentId || `new segment: ${spec.segment.name}`,
+    filters: {
+      operator: spec.filters.operator,
+      dropdownFilters: spec.filters.dropdownFilters.map(
+        ({ fieldId, optionIds, fieldName, optionNames }) => ({
+          fieldId,
+          fieldName,
+          optionIds,
+          optionNames,
+        }),
+      ),
+    },
+  };
 }
 function Preview({ plan, onCancel, onConfirm }) {
   const dialog = useRef(null);
@@ -1127,6 +1535,32 @@ function Preview({ plan, onCancel, onConfirm }) {
         Nothing has been written. The app checks current data again before
         applying. This preview expires in 10 minutes.
       </Notice>
+      {!!plan.groupCreates?.length && (
+        <>
+          <h3>Smart groups to create</h3>
+          <ul>
+            {plan.groupCreates.map((spec) => (
+              <li key={spec.key}>
+                <strong>{spec.name}</strong>
+                {spec.description ? ` — ${spec.description}` : ""}
+                <small>
+                  {spec.segment
+                    ? `New segment ${spec.segment.name} (${spec.segment.color})`
+                    : `Existing segment ${spec.groupSegmentId}`}
+                  {spec.filters.dropdownFilters.length
+                    ? ` · ${spec.filters.operator} · ${spec.filters.dropdownFilters
+                        .map(
+                          (filter) =>
+                            `${filter.fieldName}: ${filter.optionNames.join(", ")}`,
+                        )
+                        .join("; ")}`
+                    : " · no membership filters"}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {plan.action === "createDoor" && (
         <>
           <h3>{parent.title}</h3>
@@ -1305,7 +1739,40 @@ function Preview({ plan, onCancel, onConfirm }) {
         <summary>Exact request details</summary>
         <pre>
           {JSON.stringify(
-            plan.body || plan.records.map((r) => r.after),
+            {
+              ...(plan.groupCreates?.length
+                ? {
+                    segments: plan.groupCreates
+                      .filter((spec) => spec.segment)
+                      .filter(
+                        (spec, index, all) =>
+                          all.findIndex(
+                            (item) =>
+                              item.segment.name.toLowerCase() ===
+                              spec.segment.name.toLowerCase(),
+                          ) === index,
+                      )
+                      .map((spec) => spec.segment),
+                    smartGroups: plan.groupCreates.map(groupCreatePayload),
+                  }
+                : {}),
+              assignment: JSON.parse(
+                JSON.stringify(
+                  plan.body || plan.records.map((record) => record.after),
+                  (key, value) => {
+                    if (key !== "groupIds" || !Array.isArray(value))
+                      return value;
+                    const names = new Map(
+                      (plan.groupCreates || []).map((spec) => [
+                        spec.tempId,
+                        `new:${spec.name}`,
+                      ]),
+                    );
+                    return value.map((id) => names.get(id) || id);
+                  },
+                ),
+              ),
+            },
             null,
             2,
           )}
@@ -1346,6 +1813,10 @@ function Results({ report }) {
         {report.results.map((r, i) => (
           <li key={i}>
             {r.label || r.jobId || "Operation"}: <strong>{r.status}</strong>
+            {(r.requestId || r.details?.requestId) && (
+              <small>Request ID: {r.requestId || r.details.requestId}</small>
+            )}
+            {r.note && <small>{r.note}</small>}
             {r.error && <pre>{r.error}</pre>}
             {r.details && (
               <details>

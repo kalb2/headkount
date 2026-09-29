@@ -772,6 +772,43 @@ button:disabled {
 .groupPicker small {
   color: var(--muted);
 }
+.textButton {
+  background: none;
+  border: 0;
+  color: var(--blue);
+  font-weight: 700;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.groupCreate {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.groupCreate .muted,
+.filterBlock .muted {
+  margin: 6px 0 10px;
+}
+.filterRow {
+  margin: 8px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.pendingGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pendingGroup label {
+  flex: 1;
+}
+.groupCreate input[type="color"] {
+  width: 72px;
+  height: 40px;
+  padding: 4px;
+}
 .brandCard {
   border: 1px solid var(--line);
   border-radius: 12px;

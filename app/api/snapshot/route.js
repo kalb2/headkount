@@ -3,6 +3,7 @@ import {
   ctFetch,
   collectPages,
   loadSmartGroups,
+  loadSmartGroupSegments,
   responseRows,
   errorData,
 } from "../../../lib/connecteam.js";
@@ -21,49 +22,64 @@ export async function POST(req) {
         return fallback;
       }
     };
-    const [jobs, smartGroups, schedulers, timeClocks, users, userFields, me] =
-      await Promise.all([
-        collectPages(
-          apiKey,
-          "/jobs/v1/jobs?includeDeleted=false&sort=title&order=asc",
-          "jobs",
-        ),
-        optional("Smart groups", () => loadSmartGroups(apiKey), null),
-        optional(
-          "Schedules",
-          async () =>
-            responseRows(
-              await ctFetch(apiKey, "/scheduler/v1/schedulers"),
-              "schedulers",
-            ),
-          [],
-        ),
-        optional(
-          "Time clocks",
-          async () =>
-            responseRows(
-              await ctFetch(apiKey, "/time-clock/v1/time-clocks"),
-              "timeClocks",
-            ),
-          [],
-        ),
-        optional(
-          "Users",
-          () =>
-            collectPages(apiKey, "/users/v1/users?userStatus=active", "users"),
-          { rows: [] },
-        ),
-        optional(
-          "User fields",
-          () => collectPages(apiKey, "/users/v1/custom-fields", "customFields"),
-          { rows: [] },
-        ),
-        optional("Account", () => ctFetch(apiKey, "/me"), {}),
-      ]);
+    const [
+      jobs,
+      smartGroups,
+      smartGroupSegments,
+      schedulers,
+      timeClocks,
+      users,
+      userFields,
+      me,
+    ] = await Promise.all([
+      collectPages(
+        apiKey,
+        "/jobs/v1/jobs?includeDeleted=false&sort=title&order=asc",
+        "jobs",
+      ),
+      optional("Smart groups", () => loadSmartGroups(apiKey), null),
+      optional(
+        "Smart group segments",
+        () => loadSmartGroupSegments(apiKey),
+        null,
+      ),
+      optional(
+        "Schedules",
+        async () =>
+          responseRows(
+            await ctFetch(apiKey, "/scheduler/v1/schedulers"),
+            "schedulers",
+          ),
+        [],
+      ),
+      optional(
+        "Time clocks",
+        async () =>
+          responseRows(
+            await ctFetch(apiKey, "/time-clock/v1/time-clocks"),
+            "timeClocks",
+          ),
+        [],
+      ),
+      optional(
+        "Users",
+        () =>
+          collectPages(apiKey, "/users/v1/users?userStatus=active", "users"),
+        { rows: [] },
+      ),
+      optional(
+        "User fields",
+        () => collectPages(apiKey, "/users/v1/custom-fields", "customFields"),
+        { rows: [] },
+      ),
+      optional("Account", () => ctFetch(apiKey, "/me"), {}),
+    ]);
     return NextResponse.json({
       jobs: jobs.rows,
       smartGroups: smartGroups || [],
       smartGroupsLoaded: smartGroups !== null,
+      smartGroupSegments: smartGroupSegments || [],
+      smartGroupSegmentsLoaded: smartGroupSegments !== null,
       schedulers,
       timeClocks,
       users: users.rows,

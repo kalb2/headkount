@@ -87,6 +87,39 @@ globalThis.fetch = async (input, options = {}) => {
     });
   if (path === "/me")
     return response({ companyName: "Example Operations (test data)" });
+  if (!state.smartGroups)
+    state.smartGroups =
+      key === "test-empty-groups"
+        ? []
+        : [
+            { id: 1, name: "MEJ Qualified", usersCount: 12, groupSegmentId: 7 },
+            { id: 2, name: "Refi Qualified", usersCount: 8, groupSegmentId: 7 },
+            {
+              id: 3,
+              name: "House Labs Qualified",
+              usersCount: 14,
+              groupSegmentId: 7,
+            },
+          ];
+  if (!state.segments)
+    state.segments = [
+      { id: 7, name: "Departments", color: "#3968bb", sortOrder: 1 },
+    ];
+  state.nextGroup ??= 50;
+  state.nextSegment ??= 80;
+  if (path === "/users/v1/smart-group-segments") {
+    if (method === "POST") {
+      const created = {
+        id: state.nextSegment++,
+        name: body.name,
+        color: body.color,
+        sortOrder: state.segments.length + 1,
+      };
+      state.segments.push(created);
+      return response(created);
+    }
+    return response({ segments: state.segments });
+  }
   if (path === "/users/v1/smart-groups") {
     if (key === "test-groups-error")
       return new Response(
@@ -96,15 +129,33 @@ globalThis.fetch = async (input, options = {}) => {
         }),
         { status: 403 },
       );
+    if (method === "POST") {
+      const duplicate = state.smartGroups.some(
+        (group) => group.name.toLowerCase() === body.name.toLowerCase(),
+      );
+      if (duplicate)
+        return new Response(
+          JSON.stringify({
+            requestId: "group-409",
+            detail: "Group name already exists",
+          }),
+          { status: 409 },
+        );
+      const created = {
+        id: state.nextGroup++,
+        name: body.name,
+        description: body.description,
+        groupSegmentId: body.groupSegmentId,
+        numberOfUsers: 0,
+      };
+      state.smartGroups.push(created);
+      return response(created);
+    }
+    const id = Number(url.searchParams.get("id"));
     return response({
-      smartGroups:
-        key === "test-empty-groups"
-          ? []
-          : [
-              { id: 1, name: "MEJ Qualified", usersCount: 12 },
-              { id: 2, name: "Refi Qualified", usersCount: 8 },
-              { id: 3, name: "House Labs Qualified", usersCount: 14 },
-            ],
+      smartGroups: id
+        ? state.smartGroups.filter((group) => group.id === id)
+        : state.smartGroups,
     });
   }
   if (path === "/scheduler/v1/schedulers")

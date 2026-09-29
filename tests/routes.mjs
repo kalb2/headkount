@@ -101,6 +101,52 @@ response = await post("/api/actions", {
   plan: response.json.plan,
 });
 assert.equal(response.json.complete, true);
+response = await post("/api/actions", {
+  apiKey: "test-create-group",
+  phase: "preview",
+  action: "addBrand",
+  payload: {
+    parentId: "door-1",
+    title: "Popup",
+    groupIds: [1],
+    newGroupKeys: ["popup"],
+    newGroups: [
+      {
+        key: "popup",
+        name: "Popup cohort",
+        groupSegmentId: 7,
+        dropdownFilters: [{ fieldId: 30, optionIds: [11] }],
+      },
+    ],
+  },
+});
+assert.equal(response.status, 200);
+assert.equal(response.json.plan.groupCreates[0].filters.operator, "and");
+response = await post("/api/actions", {
+  apiKey: "test-create-group",
+  phase: "apply",
+  plan: response.json.plan,
+});
+assert.equal(response.json.complete, true);
+assert.deepEqual(
+  response.json.results.map((item) => item.status),
+  ["verified", "verified"],
+);
+assert.equal(response.json.results[0].groupId > 0, true);
+const conflict = await post("/api/actions", {
+  apiKey: "test-create-group",
+  phase: "preview",
+  action: "addBrand",
+  payload: {
+    parentId: "door-1",
+    title: "Another",
+    groupIds: [],
+    newGroupKeys: ["again"],
+    newGroups: [{ key: "again", name: "Popup cohort", groupSegmentId: 7 }],
+  },
+});
+assert.equal(conflict.status, 409);
+assert.match(conflict.json.error, /already exists/);
 console.log(
-  "PASS: production-route checks for snapshot, group errors, blocked proxy writes, preview requirement, bad GPS, invalid groups, preserved users/geofence, verified repair, stale replay rejection, structured API errors, and nested creation.",
+  "PASS: production-route checks for snapshot, group errors, blocked proxy writes, preview requirement, bad GPS, invalid groups, preserved users/geofence, verified repair, stale replay rejection, structured API errors, nested creation, and smart-group create-and-assign.",
 );
