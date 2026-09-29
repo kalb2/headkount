@@ -7,6 +7,11 @@ import {
   applyOperation,
 } from "../lib/operations.js";
 import {
+  eligibilityMatrix,
+  qualifiesForJob,
+  qualifiesForBrand,
+} from "../lib/eligibility.js";
+import {
   collectPages,
   loadSmartGroups,
   ctFetch,
@@ -75,6 +80,8 @@ function mockApi(options = {}) {
     ],
     nextGroup: 100,
     nextSegment: 200,
+    nextOption: 80,
+    users: options.users || [],
   };
   const calls = [];
   const request = async (key, path, opts = {}) => {
@@ -122,8 +129,56 @@ function mockApi(options = {}) {
         },
       };
     }
+    if (
+      path.startsWith("/users/v1/custom-fields/") &&
+      path.endsWith("/options") &&
+      opts.method === "POST"
+    ) {
+      const fieldId = Number(path.split("/")[4]);
+      const field = state.fields.find((item) => item.id === fieldId);
+      if (!field) throw new ConnecteamError("Missing field", 404);
+      const created = {
+        id: state.nextOption++,
+        value: body.value,
+        isDisabled: !!body.isDisabled,
+      };
+      field.dropdownOptions.push(created);
+      return { requestId: "option-req", data: created };
+    }
     if (path.startsWith("/users/v1/custom-fields"))
       return { data: { customFields: state.fields } };
+    if (path.startsWith("/users/v1/users")) {
+      if (opts.method === "PUT")
+        for (const update of body) {
+          const user = state.users.find(
+            (item) => item.userId === update.userId,
+          );
+          if (!user) throw new ConnecteamError("Missing user", 404);
+          const next = [...(user.customFields || [])];
+          for (const field of update.customFields || []) {
+            const index = next.findIndex(
+              (item) => item.customFieldId === field.customFieldId,
+            );
+            const stored = {
+              customFieldId: field.customFieldId,
+              value: field.value,
+            };
+            if (index >= 0) next[index] = stored;
+            else next.push(stored);
+          }
+          user.customFields = next;
+        }
+      const filter = new URLSearchParams(path.split("?")[1] || "")
+        .getAll("userIds")
+        .map(Number);
+      return {
+        data: {
+          users: filter.length
+            ? state.users.filter((user) => filter.includes(user.userId))
+            : state.users,
+        },
+      };
+    }
     if (path === "/scheduler/v1/schedulers")
       return { data: { schedulers: [{ schedulerId: 20, name: "Schedule" }] } };
     if (path === "/time-clock/v1/time-clocks")
@@ -1084,5 +1139,263 @@ test("several new groups can share one new segment", async () => {
         call.method === "POST" && call.path === "/users/v1/smart-groups",
     ).length,
     2,
+  );
+});
+const cohort = { fieldId: 30, groupIds: [5], optionIds: [11] };
+const people = [
+  {
+    userId: 1,
+    firstName: "Alice",
+    lastName: "Example",
+    smartGroupsIds: [5],
+    customFields: [
+      { customFieldId: 30, value: [{ id: 10 }] },
+      { customFieldId: 40, value: [{ id: 20 }, { id: 21 }] },
+    ],
+  },
+  {
+    userId: 2,
+    firstName: "Bob",
+    lastName: "Example",
+    smartGroupsIds: [5],
+    customFields: [{ customFieldId: 40, value: [{ id: 22 }] }],
+  },
+  {
+    userId: 3,
+    firstName: "Carol",
+    lastName: "Example",
+    smartGroupsIds: [],
+    customFields: [{ customFieldId: 40, value: [{ id: 20 }] }],
+  },
+  {
+    userId: 4,
+    firstName: "Dave",
+    lastName: "Example",
+    smartGroupsIds: [5],
+    customFields: [],
+  },
+  {
+    userId: 5,
+    firstName: "Erin",
+    lastName: "Example",
+    smartGroupsIds: [9],
+    customFields: [
+      { customFieldId: 30, value: [{ id: 11 }] },
+      {
+        customFieldId: 40,
+        value: [{ id: 20 }, { id: 21 }, { id: 22 }, { id: 23 }],
+      },
+    ],
+  },
+];
+test("eligibility is the intersection of job qualification and one brand", () => {
+  assert.equal(qualifiesForJob(people[2], cohort), false);
+  assert.equal(
+    qualifiesForBrand(people[2], { fieldId: 40, optionId: 20 }),
+    true,
+  );
+  assert.equal(qualifiesForJob(people[3], cohort), true);
+  assert.equal(
+    qualifiesForBrand(people[3], { fieldId: 40, optionId: 20, groupIds: [] }),
+    false,
+  );
+  const matrix = eligibilityMatrix(people, {
+    cohort,
+    brands: [
+      { key: "mej", title: "MEJ", fieldId: 40, optionId: 20 },
+      { key: "refi", title: "Refi", fieldId: 40, optionId: 21 },
+      { key: "popup", title: "Popup", fieldId: 40, optionId: 22 },
+      { key: "labs", title: "Labs", fieldId: 40, optionId: 23 },
+    ],
+  });
+  assert.deepEqual(
+    matrix.map((row) => row.userIds),
+    [[1, 5], [1, 5], [2, 5], [5]],
+  );
+  const alice = new Set(
+    matrix.filter((row) => row.userIds.includes(1)).map((row) => row.title),
+  );
+  const bob = new Set(
+    matrix.filter((row) => row.userIds.includes(2)).map((row) => row.title),
+  );
+  assert.equal(alice.has("Popup"), false);
+  assert.equal(bob.has("MEJ"), false);
+  assert.equal(alice.size, 2);
+});
+function eligibilityFixture(users = people, groups) {
+  return mockApi({
+    users,
+    groups: groups || [
+      { id: 5, name: "West", groupSegmentId: 7 },
+      { id: 9, name: "Visiting", groupSegmentId: 7 },
+    ],
+    fields: [
+      {
+        id: 30,
+        name: "Doors",
+        type: "dropdown",
+        isMultiSelect: true,
+        dropdownOptions: [
+          { id: 10, value: "Old Grove" },
+          { id: 11, value: "West" },
+        ],
+      },
+      {
+        id: 40,
+        name: "Brands",
+        type: "dropdown",
+        isMultiSelect: true,
+        dropdownOptions: [
+          { id: 20, value: "MEJ" },
+          { id: 21, value: "Refi" },
+          { id: 22, value: "Popup" },
+          { id: 23, value: "Labs" },
+        ],
+      },
+    ],
+  });
+}
+const eligibilityDoor = {
+  title: "Grove",
+  instanceIds: [20],
+  parentGroupIds: [],
+  gps: { address: "", latitude: "", longitude: "" },
+  subJobs: [
+    { title: "MEJ", groupIds: [], brandOptionId: 20 },
+    { title: "Refi", groupIds: [], brandOptionId: 21 },
+    { title: "Popup", groupIds: [], brandOptionId: 22 },
+    { title: "Labs", groupIds: [], brandOptionId: 23 },
+  ],
+  eligibility: {
+    doorFieldId: 30,
+    brandFieldId: 40,
+    doorValue: "Grove",
+    cohortGroupIds: [5],
+    cohortOptionIds: [11],
+    groupSegmentId: 7,
+  },
+};
+test("a new job batches brand groups and tags only the job-and-brand intersection", async () => {
+  const m = eligibilityFixture();
+  const plan = await previewOperation(
+    "key",
+    "createDoor",
+    eligibilityDoor,
+    m.request,
+  );
+  assert.equal(plan.groupCreates.length, 5);
+  assert.equal(plan.groupCreates[0].filters.dropdownFilters.length, 1);
+  const brandFilter = plan.groupCreates[1].filters;
+  assert.equal(brandFilter.operator, "and");
+  assert.deepEqual(
+    brandFilter.dropdownFilters.map((filter) => filter.fieldId),
+    [30, 40],
+  );
+  assert.deepEqual(
+    plan.eligibility.brands.map((brand) => brand.userIds),
+    [[1, 5], [1, 5], [2, 5], [5]],
+  );
+  assert.deepEqual(
+    plan.eligibility.userUpdates.map((user) => user.userId),
+    [1, 2, 4, 5],
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  const groupPosts = m.calls.filter(
+    (call) => call.method === "POST" && call.path === "/users/v1/smart-groups",
+  );
+  assert.equal(groupPosts.length, 5);
+  assert.equal(groupPosts[1].body.filters.operator, "and");
+  assert.deepEqual(
+    groupPosts[1].body.filters.dropdownFilters.map((filter) => filter.fieldId),
+    [30, 40],
+  );
+  assert.equal(
+    groupPosts[1].body.filters.dropdownFilters[0].optionIds[0] >= 80,
+    true,
+  );
+  const userPosts = m.calls.filter(
+    (call) => call.method === "PUT" && call.path.startsWith("/users/v1/users"),
+  );
+  assert.deepEqual(
+    userPosts.map((call) => call.body[0].userId),
+    [1, 2, 4, 5],
+  );
+  assert.deepEqual(
+    m.state.users[0].customFields.find((field) => field.customFieldId === 30)
+      .value,
+    [{ id: 10 }, { id: 80 }],
+  );
+  assert.deepEqual(
+    m.state.users[0].customFields.find((field) => field.customFieldId === 40)
+      .value,
+    [{ id: 20 }, { id: 21 }],
+  );
+  assert.equal(
+    m.state.users.find((user) => user.userId === 3).customFields.length,
+    1,
+  );
+  assert.deepEqual(m.state.created.assign.groupIds, [100]);
+  assert.deepEqual(
+    m.state.created.subJobs.map((sub) => sub.assign.groupIds),
+    [[101], [102], [103], [104]],
+  );
+});
+test("an empty smart-group list still allows an eligibility setup", async () => {
+  const m = eligibilityFixture(
+    [
+      {
+        userId: 5,
+        firstName: "Erin",
+        lastName: "Example",
+        smartGroupsIds: [],
+        customFields: [
+          { customFieldId: 30, value: [{ id: 11 }] },
+          { customFieldId: 40, value: [{ id: 20 }] },
+        ],
+      },
+    ],
+    [],
+  );
+  const plan = await previewOperation(
+    "key",
+    "createDoor",
+    {
+      ...eligibilityDoor,
+      subJobs: [{ title: "MEJ", groupIds: [], brandOptionId: 20 }],
+      eligibility: {
+        ...eligibilityDoor.eligibility,
+        cohortGroupIds: [],
+        cohortOptionIds: [11],
+      },
+    },
+    m.request,
+  );
+  assert.equal(plan.eligibility.brands[0].userIds[0], 5);
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  assert.equal(m.state.users[0].customFields[0].value[1].id, 80);
+});
+test("a single-select field cannot be the eligibility tag", async () => {
+  const m = eligibilityFixture();
+  m.state.fields[0].isMultiSelect = false;
+  await assert.rejects(
+    () => previewOperation("key", "createDoor", eligibilityDoor, m.request),
+    /multiple selections/,
+  );
+});
+test("smart-group permission errors still block an eligibility setup", async () => {
+  await assert.rejects(
+    () =>
+      previewOperation("key", "createDoor", eligibilityDoor, async () => {
+        throw new ConnecteamError("GET /users/v1/smart-groups: denied", 403, {
+          requestId: "groups-403",
+        });
+      }),
+    (error) => {
+      assert.equal(error.status, 403);
+      assert.equal(error.payload.requestId, "groups-403");
+      return true;
+    },
   );
 });

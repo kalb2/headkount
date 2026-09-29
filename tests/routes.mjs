@@ -171,6 +171,40 @@ const conflict = await post("/api/actions", {
 });
 assert.equal(conflict.status, 409);
 assert.match(conflict.json.error, /already exists/);
+const eligibility = await post("/api/actions", {
+  apiKey: key,
+  phase: "preview",
+  action: "createDoor",
+  payload: {
+    title: "Eligibility Door",
+    instanceIds: [20],
+    parentGroupIds: [],
+    subJobs: [
+      { title: "MEJ", groupIds: [], brandOptionId: 20 },
+      { title: "Refi", groupIds: [], brandOptionId: 21 },
+    ],
+    eligibility: {
+      doorFieldId: 30,
+      brandFieldId: 40,
+      doorValue: "Eligibility Door",
+      cohortGroupIds: [1],
+      groupSegmentId: 7,
+    },
+  },
+});
+assert.equal(eligibility.status, 200);
+assert.equal(eligibility.json.plan.groupCreates.length, 3);
+assert.equal(eligibility.json.plan.groupCreates[1].filters.operator, "and");
+assert.deepEqual(
+  eligibility.json.plan.eligibility.brands.map((brand) =>
+    brand.people.map((person) => person.label),
+  ),
+  [["Jane Example"], []],
+);
+assert.deepEqual(
+  eligibility.json.plan.eligibility.userUpdates.map((user) => user.userId),
+  [101],
+);
 console.log(
   "PASS: production-route checks for snapshot, group errors, blocked proxy writes, preview requirement, bad GPS, invalid groups, preserved users/geofence, verified repair, stale replay rejection, structured API errors, nested creation, and smart-group create-and-assign.",
 );

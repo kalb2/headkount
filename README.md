@@ -1,6 +1,6 @@
-# Connecteam Operations Manager — V1.4
+# Connecteam Operations Manager — V1.5
 
-A standalone Next.js application for creating and managing doors, brand sub-jobs, and assignments to Connecteam smart groups. Operators can select an existing smart group or create one—and a segment when needed—in the same preview and apply.
+A standalone Next.js application for creating and managing doors, brand sub-jobs, and assignments to Connecteam smart groups. A new job can batch one eligibility group per brand. Operators can still select an existing smart group or create a single one in the same preview and apply.
 
 ## Start locally
 
@@ -27,7 +27,13 @@ The key stays in browser session storage until you disconnect or close the sessi
 
 At least one brand is required for a new door because Connecteam does not allow converting a standalone job into a parent with sub-jobs later. A parent containing sub-jobs cannot be updated as one object; this app updates its sub-jobs individually. Parent renaming and arbitrary metadata editing are not included.
 
-Assigning several smart groups does not implement a Door AND Brand eligibility engine. Select or create groups appropriate to the door/brand combination. This release does not schedule shifts and does not delete smart groups.
+## Job and brand eligibility
+
+On **Create door setup**, choose a multi-select job dropdown and a different multi-select brand dropdown. Preview creates a job tag when needed, one smart group for the job, and one smart group for every brand. Each brand group uses Connecteam’s `filters.operator: "and"` with the job tag and that brand’s tag. Connecteam then keeps a person on the brand only while both tags match.
+
+People already in any checked job group, or already holding any checked job tag, qualify for the job. They qualify for a brand when they already hold that brand’s tag. The intersection is tagged during apply, so one person can land on several brands and several jobs. The manual **Create smart group** control is still there for a single group. Extra groups selected by hand are alternatives on that sub-job, not a second AND.
+
+This release does not schedule shifts and does not delete smart groups.
 
 ## Creating a smart group
 
@@ -57,7 +63,7 @@ This secondary tool edits a chosen employee dropdown field. It reads fresh value
 
 See **VALIDATION.md** for the checks performed and **API-NOTES.md** for the official documentation reviewed.
 
-The local production build and automated logic tests passed. **Live account access and writes have not been tested** because no account key was supplied. V1.4 is ready for controlled account acceptance testing, not a claim that every live account configuration is verified.
+The local production build and automated logic tests passed. **Live account access and writes have not been tested** because no account key was supplied. V1.5 is ready for controlled account acceptance testing, not a claim that every live account configuration is verified.
 
 Connecteam does not document conditional writes or a multi-record transaction for these operations. A small race remains between the final read and the write, and earlier successful writes are not rolled back if a later write fails. A network interruption or hosting timeout may leave an unknown outcome. Refresh and inspect affected records before retrying. Start with a small selection; long operations are subject to your hosting provider’s request-duration limit.
 

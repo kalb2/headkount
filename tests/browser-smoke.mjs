@@ -199,6 +199,40 @@ try {
   await page.getByLabel("Group name").first().waitFor();
   assert.match(await page.locator("body").innerText(), /could not be read/);
   await disconnect();
+  await connect("test-eligibility");
+  await page.getByRole("button", { name: "+ Create door setup" }).click();
+  await page.getByLabel("Door / job name").fill("Eligibility Door");
+  await page.getByLabel("West Coast Retail").check();
+  await page.getByLabel("Brand 1 name").fill("MEJ");
+  await page.getByLabel("Job dropdown").selectOption("30");
+  await page.getByLabel("Brand dropdown").selectOption("40");
+  await page.getByLabel("Eligibility segment").selectOption("7");
+  await page
+    .getByRole("group", { name: "Who already qualifies for this job" })
+    .getByLabel("MEJ Qualified")
+    .check();
+  await page.getByLabel("Brand 1 tag").selectOption("20");
+  await page.getByRole("button", { name: "+ Add brand", exact: true }).click();
+  await page.getByLabel("Brand 2 name").fill("Refi");
+  await page.getByLabel("Brand 2 tag").selectOption("21");
+  await page.getByRole("button", { name: "Preview complete setup" }).click();
+  await dialog.waitFor();
+  assert.match(await dialog.innerText(), /Job AND brand/);
+  assert.match(await dialog.innerText(), /Jane Example/);
+  assert.doesNotMatch(await dialog.innerText(), /Sam Example/);
+  await dialog.getByRole("button", { name: "Create complete setup" }).click();
+  await page.getByText("Operation completed.", { exact: true }).waitFor();
+  assert.match(
+    await page.locator("body").innerText(),
+    /Smart group Eligibility Door — MEJ: verified/,
+  );
+  await page.getByRole("button", { name: "+ Create door setup" }).click();
+  await page
+    .getByRole("checkbox", { name: /Eligibility Door — MEJ/ })
+    .first()
+    .waitFor();
+  await page.getByRole("button", { name: "Back to doors" }).click();
+  await disconnect();
   await connect("test-write-error");
   await page
     .getByRole("button", { name: "Audit & Repair", exact: true })
@@ -240,7 +274,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: production UI creation, smart-group search/selection, inline create-and-assign, preview/apply, manage/add brand, any-sub-job selection, inheritance warning, employee updates, empty/error group states, real API error details, mobile layout; no browser errors.",
+    "PASS: production UI creation, smart-group search/selection, inline create-and-assign, job-and-brand eligibility, preview/apply, manage/add brand, any-sub-job selection, inheritance warning, employee updates, empty/error group states, real API error details, mobile layout; no browser errors.",
   );
 } finally {
   await browser.close();

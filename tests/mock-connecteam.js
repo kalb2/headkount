@@ -42,14 +42,19 @@ function fixture() {
         firstName: "Jane",
         lastName: "Example",
         email: "jane@example.test",
-        customFields: [{ customFieldId: 30, value: [{ id: 10 }] }],
+        customFields: [
+          { customFieldId: 30, value: [{ id: 10 }] },
+          { customFieldId: 40, value: [{ id: 20 }] },
+        ],
+        smartGroupsIds: [1],
       },
       {
         userId: 102,
         firstName: "Sam",
         lastName: "Example",
         email: "sam@example.test",
-        customFields: [],
+        customFields: [{ customFieldId: 40, value: [{ id: 21 }] }],
+        smartGroupsIds: [2],
       },
     ],
     fields: [
@@ -62,6 +67,17 @@ function fixture() {
         dropdownOptions: [
           { id: 10, value: "The Grove" },
           { id: 11, value: "Santa Monica" },
+        ],
+      },
+      {
+        id: 40,
+        name: "Brands",
+        type: "dropdown",
+        isMultiSelect: true,
+        isRequired: false,
+        dropdownOptions: [
+          { id: 20, value: "MEJ" },
+          { id: 21, value: "Refi" },
         ],
       },
     ],
@@ -182,15 +198,30 @@ globalThis.fetch = async (input, options = {}) => {
     return response({ timeClocks: [] });
   if (path === "/users/v1/custom-fields")
     return response({ customFields: state.fields });
-  if (path.endsWith("/custom-fields/30/options") && method === "POST") {
-    state.fields[0].dropdownOptions.push({ id: 12, ...body });
-    return response({ id: 12, ...body });
+  if (/\/custom-fields\/\d+\/options$/.test(path) && method === "POST") {
+    const fieldId = Number(path.split("/")[4]);
+    const field = state.fields.find((item) => item.id === fieldId);
+    const created = { id: fieldId === 30 ? 12 : 50, ...body };
+    field.dropdownOptions.push(created);
+    return response(created);
   }
   if (path === "/users/v1/users") {
     if (method === "PUT")
       for (const update of body) {
-        const user = state.users.find((u) => u.userId === update.userId);
-        user.customFields = update.customFields;
+        const user = state.users.find((item) => item.userId === update.userId);
+        const next = [...(user.customFields || [])];
+        for (const field of update.customFields || []) {
+          const index = next.findIndex(
+            (item) => item.customFieldId === field.customFieldId,
+          );
+          const stored = {
+            customFieldId: field.customFieldId,
+            value: field.value,
+          };
+          if (index >= 0) next[index] = stored;
+          else next.push(stored);
+        }
+        user.customFields = next;
       }
     const filter = url.searchParams.getAll("userIds").map(Number);
     return response({

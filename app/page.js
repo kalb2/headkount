@@ -104,8 +104,32 @@ function mergeSavedGroups(snapshot, report) {
   const addedGroup = groups.length !== (snapshot.smartGroups || []).length;
   const addedSegment =
     segments.length !== (snapshot.smartGroupSegments || []).length;
+  const userFields = (snapshot.userFields || []).map((field) => ({
+    ...field,
+    dropdownOptions: [...(field.dropdownOptions || [])],
+  }));
+  for (const result of report.results) {
+    if (result.status !== "verified" || !result.optionId || !result.fieldId)
+      continue;
+    const field = userFields.find((item) => item.id === result.fieldId);
+    if (
+      !field ||
+      field.dropdownOptions.some((option) => option.id === result.optionId)
+    )
+      continue;
+    const value = String(result.label || "")
+      .split(": ")
+      .slice(1)
+      .join(": ");
+    field.dropdownOptions.push({
+      id: result.optionId,
+      value: value || `Option ${result.optionId}`,
+      isDisabled: false,
+    });
+  }
   return {
     ...snapshot,
+    userFields,
     smartGroups: groups,
     smartGroupsLoaded: snapshot.smartGroupsLoaded || addedGroup,
     smartGroupsBlocked: addedGroup ? false : snapshot.smartGroupsBlocked,
@@ -651,7 +675,7 @@ export default function Home() {
       <main className="shell connectShell">
         <section className="connectCard">
           <div className="brandMark">C</div>
-          <span className="badge blue">Operations Manager · V1.4.1</span>
+          <span className="badge blue">Operations Manager · V1.5.0</span>
           <h1>
             Every door.
             <br />
@@ -692,7 +716,7 @@ export default function Home() {
           <span>C</span>
           <strong>Ops Manager</strong>
         </div>
-        <small className="version">V1.4.1</small>
+        <small className="version">V1.5.0</small>
         <nav>
           {[
             ["doors", "Doors & brands"],
@@ -960,16 +984,47 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const blocked = !!groupBlockMessage(snapshot);
   const listFailed = !snapshot.smartGroupsLoaded && !!snapshot.smartGroupsError;
   const createFirst = !blocked && !groups.length;
+  const multiFields = fields.filter((field) => field.isMultiSelect === true);
+  const eligibility = door.eligibility;
+  const eligibilityOn = !!eligibility?.doorFieldId;
+  const brandField = multiFields.find(
+    (field) => field.id === Number(eligibility?.brandFieldId),
+  );
+  const segmentReady = !eligibilityOn || !!eligibility.segmentId;
   const valid =
     !blocked &&
     door.title.trim() &&
     door.instanceIds.length &&
     door.subJobs.length &&
-    door.subJobs.every(
-      (s) =>
-        s.title.trim() &&
-        (s.groupIds.length || (s.newGroupKeys || []).length || parentChosen),
-    );
+    door.subJobs.every((sub) => sub.title.trim()) &&
+    (eligibilityOn
+      ? eligibility.brandFieldId && segmentReady
+      : door.subJobs.every(
+          (sub) =>
+            sub.groupIds.length ||
+            (sub.newGroupKeys || []).length ||
+            parentChosen,
+        ));
+  function setEligibility(patch) {
+    setDoor((current) => ({
+      ...current,
+      eligibility: {
+        doorFieldId: "",
+        doorValue: "",
+        doorOptionId: "",
+        brandFieldId: "",
+        cohortGroupIds: [],
+        cohortOptionIds: [],
+        segmentId: snapshot.smartGroupSegments?.[0]
+          ? String(snapshot.smartGroupSegments[0].id)
+          : "new",
+        segmentName: "",
+        color: "#3968bb",
+        ...(current.eligibility || {}),
+        ...patch,
+      },
+    }));
+  }
   function addPending(draft) {
     setDoor((current) => ({
       ...current,
@@ -1090,12 +1145,227 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
         </Notice>
       ) : (
         <Notice>
-          {groups.length} existing smart groups available. Select them or create
-          a new group in the same list. Selecting several groups adds those
-          groups; it does not calculate a Door AND Brand intersection.
+          {groups.length} existing smart groups available. Job and brand
+          eligibility below batches one group per brand. A person lands on a
+          brand only when they match the job and that brand. Extra groups
+          selected by hand are alternatives to that rule.
         </Notice>
       )}
       <div className="panel formPanel">
+        <h3>Job and brand eligibility</h3>
+        <p className="muted">
+          Primary setup for a new job with several brands. Choose the job and
+          brand dropdowns, then preview. The app creates the tags, one smart
+          group for the job, and one smart group per brand. People who already
+          qualify for the job and a brand are tagged automatically. The group
+          lists further down remain available for a single group.
+        </p>
+        {!multiFields.length && (
+          <Notice tone="warning">
+            This account has no multi-select dropdown fields, so eligibility
+            tags cannot be stored yet. Create those fields in Connecteam, or
+            assign groups manually below.
+          </Notice>
+        )}
+        <div className="formGrid two">
+          <Field label="Job dropdown">
+            <select
+              aria-label="Job dropdown"
+              value={eligibility?.doorFieldId || ""}
+              disabled={blocked}
+              onChange={(e) =>
+                e.target.value
+                  ? setEligibility({
+                      doorFieldId: e.target.value,
+                      doorOptionId: "",
+                      cohortOptionIds: [],
+                    })
+                  : set("eligibility", null)
+              }
+            >
+              <option value="">Skip — assign groups manually</option>
+              {multiFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {eligibilityOn && (
+            <Field
+              label="Job tag"
+              hint="Leave blank to use the job name. Pick an existing tag if this job is already on the field."
+            >
+              <input
+                aria-label="Job tag"
+                maxLength={128}
+                value={eligibility.doorValue || ""}
+                placeholder={door.title || "New job tag"}
+                onChange={(e) =>
+                  setEligibility({
+                    doorValue: e.target.value,
+                    doorOptionId: "",
+                  })
+                }
+              />
+            </Field>
+          )}
+        </div>
+        {eligibilityOn && (
+          <>
+            <Field label="Existing job tag">
+              <select
+                aria-label="Existing job tag"
+                value={eligibility.doorOptionId || ""}
+                onChange={(e) =>
+                  setEligibility({
+                    doorOptionId: e.target.value,
+                    doorValue: e.target.value ? "" : eligibility.doorValue,
+                  })
+                }
+              >
+                <option value="">Create the job tag above</option>
+                {(
+                  multiFields.find(
+                    (field) => field.id === Number(eligibility.doorFieldId),
+                  )?.dropdownOptions || []
+                )
+                  .filter((option) => !option.isDeleted && !option.isDisabled)
+                  .map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.value}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <div className="formGrid two">
+              <Field label="Brand dropdown">
+                <select
+                  aria-label="Brand dropdown"
+                  value={eligibility.brandFieldId || ""}
+                  onChange={(e) =>
+                    setEligibility({ brandFieldId: e.target.value })
+                  }
+                >
+                  <option value="">Choose the brand field</option>
+                  {multiFields
+                    .filter(
+                      (field) => field.id !== Number(eligibility.doorFieldId),
+                    )
+                    .map((field) => (
+                      <option key={field.id} value={field.id}>
+                        {field.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Segment for these groups">
+                <select
+                  aria-label="Eligibility segment"
+                  value={eligibility.segmentId || ""}
+                  onChange={(e) =>
+                    setEligibility({ segmentId: e.target.value })
+                  }
+                >
+                  {(snapshot.smartGroupSegments || []).map((segment) => (
+                    <option key={segment.id} value={segment.id}>
+                      {segment.name}
+                    </option>
+                  ))}
+                  <option value="new">Create a new segment…</option>
+                </select>
+              </Field>
+            </div>
+            {String(eligibility.segmentId) === "new" && (
+              <div className="formGrid two">
+                <Field label="New eligibility segment">
+                  <input
+                    maxLength={128}
+                    value={eligibility.segmentName || ""}
+                    placeholder={`${door.title || "Job"} eligibility`}
+                    onChange={(e) =>
+                      setEligibility({ segmentName: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Segment color">
+                  <input
+                    aria-label="Eligibility segment color"
+                    type="color"
+                    value={eligibility.color || "#3968bb"}
+                    onChange={(e) => setEligibility({ color: e.target.value })}
+                  />
+                </Field>
+              </div>
+            )}
+            <fieldset className="groupPicker">
+              <legend>Who already qualifies for this job</legend>
+              <p className="muted">
+                A person qualifies for the job when they are in any checked
+                group or already have any checked job tag. They are then added
+                to a brand only if they also match that brand.
+              </p>
+              <div className="checkGrid">
+                {groups.map((group) => (
+                  <label key={group.id}>
+                    <input
+                      type="checkbox"
+                      checked={(eligibility.cohortGroupIds || []).includes(
+                        group.id,
+                      )}
+                      onChange={() =>
+                        setEligibility({
+                          cohortGroupIds: toggle(
+                            eligibility.cohortGroupIds || [],
+                            group.id,
+                          ),
+                        })
+                      }
+                    />
+                    <span>
+                      {group.name}
+                      <small>Smart group</small>
+                    </span>
+                  </label>
+                ))}
+                {(
+                  multiFields.find(
+                    (field) => field.id === Number(eligibility.doorFieldId),
+                  )?.dropdownOptions || []
+                )
+                  .filter((option) => !option.isDeleted && !option.isDisabled)
+                  .map((option) => (
+                    <label key={`opt-${option.id}`}>
+                      <input
+                        type="checkbox"
+                        checked={(eligibility.cohortOptionIds || []).includes(
+                          option.id,
+                        )}
+                        onChange={() =>
+                          setEligibility({
+                            cohortOptionIds: toggle(
+                              eligibility.cohortOptionIds || [],
+                              option.id,
+                            ),
+                          })
+                        }
+                      />
+                      <span>
+                        {option.value}
+                        <small>Existing job tag</small>
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              {!groups.length && (
+                <p className="muted">
+                  No smart groups are loaded. Use existing job tags, or create
+                  the groups now and tag people later.
+                </p>
+              )}
+            </fieldset>
+          </>
+        )}
         {createFirst && parentSection}
         <h3>{createFirst ? "Door details" : "1. Door details"}</h3>
         <div className="formGrid two">
@@ -1189,6 +1459,30 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                   onChange={(e) => update(i, { title: e.target.value })}
                 />
               </Field>
+              {eligibilityOn && (
+                <Field label={`Brand ${i + 1} tag`}>
+                  <select
+                    aria-label={`Brand ${i + 1} tag`}
+                    value={s.brandOptionId || ""}
+                    onChange={(e) =>
+                      update(i, { brandOptionId: e.target.value })
+                    }
+                  >
+                    <option value="">
+                      Create a tag named {s.title || "this brand"}
+                    </option>
+                    {(brandField?.dropdownOptions || [])
+                      .filter(
+                        (option) => !option.isDeleted && !option.isDisabled,
+                      )
+                      .map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.value}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+              )}
               <div>
                 <Groups
                   label={`Brand ${i + 1} groups`}
@@ -1799,6 +2093,56 @@ function Preview({ plan, onCancel, onConfirm }) {
         Nothing has been written. The app checks current data again before
         applying. This preview expires in 10 minutes.
       </Notice>
+      {plan.eligibility && (
+        <>
+          <h3>Job AND brand</h3>
+          <p>
+            A person is added to a brand only when they qualify for{" "}
+            <strong>{plan.eligibility.doorOptionLabel}</strong> and that brand.
+            {plan.eligibility.userUpdates.length === 1
+              ? " 1 person will gain tags."
+              : plan.eligibility.userUpdates.length
+                ? ` ${plan.eligibility.userUpdates.length} people will gain tags.`
+                : " No new tags are needed."}
+            {plan.eligibility.alreadyTagged
+              ? ` ${plan.eligibility.alreadyTagged} matching people already have the tags.`
+              : ""}
+          </p>
+          {!!plan.eligibility.options.length && (
+            <ul>
+              {plan.eligibility.options.map((option) => (
+                <li key={option.tempId}>
+                  New {option.fieldName} tag: <strong>{option.value}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Brand group</th>
+                  <th>People who match the job and this brand</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plan.eligibility.brands.map((brand) => (
+                  <tr key={brand.key}>
+                    <td>
+                      <strong>{brand.groupName}</strong>
+                      <small>{brand.optionLabel}</small>
+                    </td>
+                    <td>
+                      {brand.people.map((person) => person.label).join(", ") ||
+                        "No one matches yet. The group still updates when both tags are set later."}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       {!!plan.groupCreates?.length && (
         <>
           <h3>Smart groups to create</h3>

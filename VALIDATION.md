@@ -1,11 +1,11 @@
-# V1.4 validation report
+# V1.5 validation report
 
 **Date:** 29 September 2026  
 **Status:** Local validation passed for the smart-group create-and-assign path. Live Connecteam account acceptance remains outstanding.
 
 ## Completed checks
 
-- Automated logic suite: **38 passed, 0 failed** using Node’s test runner. The new cases cover named groups with empty dropdown filters, `fieldId` filters on an existing segment, shared new segments, preview-time rejection of duplicate names, invalid segments, invalid options, and `customFieldId`, a `409` name conflict with its request ID, keeping a created group when the job write fails, refusing to assign an unverified group id, and preserving direct users, code, and custom fields on repair. V1.4.1 also accepts both `data.smartGroups` and `data.groups` (including an empty list), still creates a group when that list is empty or unreadable, and still blocks planning on a `403`.
+- Automated logic suite: **43 passed, 0 failed** using Node’s test runner. Cases cover smart-group create-and-assign, both `data.smartGroups` and `data.groups`, empty and unreadable lists, `403` blocking, and V1.5 eligibility: a person is tagged for a brand only when they qualify for the job and that brand, including someone on several brands and someone else on different brands.
 - Production build: **PASS**, Next.js 15.5.24.
 - Production-route checks: **PASS** against the compiled server with test-only upstream responses, including create-and-assign and a repeated-name `409`.
 - Browser checks: **PASS** via `tests/browser-smoke.mjs` on that server. The script still covers the V1.3 door, repair, employee, empty-group, and error flows, and now creates a segment plus a filtered smart group from the brand group list, previews it, applies it, and checks the verified result and request ID. An empty list shows **No smart groups yet** and an open **Create smart group** form. After apply, the new group is in the picker without reconnecting. A `403` says smart groups are blocked, includes request ID `groups-403`, and hides the create form. A list the app cannot parse says the groups could not be loaded, includes request ID `groups-shape`, and still shows the create form.
@@ -26,7 +26,7 @@ The production-route suite also confirms that legacy proxy writes return 405, un
 6. Add a new brand to an existing parent, preview, apply, and verify.
 7. Select an unassigned sub-job and inspect the inheritance warning/preview.
 8. Preview an employee’s additional door value while keeping its existing value, then apply and verify.
-9. Confirm an empty smart-group list shows **No smart groups yet** and an open create form, then create a segment and a filtered smart group, preview, apply, verify, and see that group in the picker without reconnecting.
+9. Confirm an empty smart-group list shows **No smart groups yet** and an open create form, then create a segment and a filtered smart group, preview, apply, verify, and see that group in the picker without reconnecting. A separate account creates a job with two brands through eligibility, shows Jane on MEJ only, applies, and finds the new brand group in the picker.
 10. Confirm a smart-group permission failure says the list is blocked, shows its request ID, and hides the create form. A response that is neither `data.smartGroups` nor `data.groups` says the list could not be loaded, shows its request ID, and still offers create.
 11. Confirm a failed repair displays the validation body and request ID without claiming success.
 12. Add a new dropdown value and verify it appears in the refreshed list.
@@ -61,4 +61,4 @@ No real account credential was provided. No live Connecteam data was read or cha
 
 The API does not document transactional bulk repairs or conditional writes. The app compares fresh data before each write, but cannot eliminate the interval between read and write. Multi-record work stops on failure without rolling back previous successes. Unknown or saved-but-unverified outcomes require inspection before retrying. Hosting time limits also apply; use small batches initially.
 
-**V1.4 adds smart-group creation to the existing preview and apply path. It is a locally validated build for controlled live-account acceptance, not a claim of full production-account validation.**
+**V1.5 adds job-and-brand eligibility on top of smart-group creation. It is a locally validated build for controlled live-account acceptance, not a claim of full production-account validation.**
