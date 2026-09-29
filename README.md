@@ -1,6 +1,6 @@
-# Connecteam Operations Manager — V1.3
+# Connecteam Operations Manager — V1.5
 
-A standalone Next.js application for creating and managing doors, brand sub-jobs, and assignments to existing Connecteam smart groups.
+A standalone Next.js application for creating and managing doors, brand sub-jobs, and assignments to Connecteam smart groups. A new job can batch one eligibility group per brand. Operators can still select an existing smart group or create a single one in the same preview and apply.
 
 ## Start locally
 
@@ -20,14 +20,28 @@ The key stays in browser session storage until you disconnect or close the sessi
 ## Main workflow
 
 1. **Doors & brands → Create door setup.** Enter the door name, description, optional address/coordinates, and destination schedule/time clock.
-2. Add brand sub-jobs and select their existing smart groups using searchable checkbox lists. A brand can instead inherit the parent’s groups.
-3. **Preview complete setup.** The server validates current group IDs, target instances, names, coordinates, and duplicate doors. The preview names each door → brand → smart-group relationship.
-4. **Create complete setup.** One nested API request creates the structure; the app reads it back to verify the settings.
-5. **Manage brands** on any existing door lets you repair assignments or add a brand to a parent that already supports sub-jobs.
+2. Add brand sub-jobs and select smart groups using searchable checkbox lists. A brand can instead inherit the parent’s groups. Use **Create smart group** on any group list to add a named group without leaving the form.
+3. **Preview complete setup.** The server validates current group IDs, new group and segment names, dropdown filters, target instances, names, coordinates, and duplicate doors. The preview names each door → brand → smart-group relationship and lists groups that will be created.
+4. **Create complete setup.** New segments and smart groups are created and read back first. The nested job request then assigns the new group IDs together with any existing groups. The app reads the job back to verify the settings.
+5. **Manage brands** on any existing door lets you repair assignments or add a brand to a parent that already supports sub-jobs. Those group lists can create a smart group in the same preview.
 
 At least one brand is required for a new door because Connecteam does not allow converting a standalone job into a parent with sub-jobs later. A parent containing sub-jobs cannot be updated as one object; this app updates its sub-jobs individually. Parent renaming and arbitrary metadata editing are not included.
 
-Assigning several smart groups does not implement a Door AND Brand eligibility engine. Select existing groups appropriate to the door/brand combination. This release does not create smart groups or schedule shifts.
+## Job and brand eligibility
+
+On **Create door setup**, choose a multi-select job dropdown and a different multi-select brand dropdown. Preview creates a job tag when needed, one smart group for the job, and one smart group for every brand. Each brand group uses Connecteam’s `filters.operator: "and"` with the job tag and that brand’s tag. Connecteam then keeps a person on the brand only while both tags match.
+
+People already in any checked job group, or already holding any checked job tag, qualify for the job. They qualify for a brand when they already hold that brand’s tag. The intersection is tagged during apply, so one person can land on several brands and several jobs. The manual **Create smart group** control is still there for a single group. Extra groups selected by hand are alternatives on that sub-job, not a second AND.
+
+This release does not schedule shifts and does not delete smart groups.
+
+## Creating a smart group
+
+On a door, brand, or repair group list, open **Create smart group**. Enter a unique name, pick an existing segment or enter a new segment name and color, and optionally add dropdown-field filters. Add the group to the list and leave it checked, alongside any existing groups. Preview, then apply.
+
+The apply creates the segment (if needed) and the smart group, reads them back, and only then writes the door or brand assignment with the new group ID. The new group is added to the picker immediately, including when you refresh. A name conflict, invalid segment, or invalid dropdown option fails in preview, or on apply with the Connecteam request ID, before the job write. If the group is created and a later job write fails, the group is kept; select it as an existing group to retry. Membership filters are sent as `filters.dropdownFilters[].fieldId`. An empty filter list still creates the named group. The group read model does not return filters, so readback confirms the id, name, and segment.
+
+An empty smart-group list is a normal account state: the app shows **Create smart group** and does not call the list unavailable. A permission or API-key failure is the case that blocks creation, and that message includes the Connecteam request ID.
 
 ## Safe repairs
 
@@ -49,7 +63,7 @@ This secondary tool edits a chosen employee dropdown field. It reads fresh value
 
 See **VALIDATION.md** for the checks performed and **API-NOTES.md** for the official documentation reviewed.
 
-The local production build and automated logic tests passed. Browser workflows were exercised against test-only Connecteam responses through the real production routes. **Live account access and writes have not been tested** because no account key was supplied. V1.2 remains unapproved; V1.3 is ready for controlled account acceptance testing, not a claim that every live account configuration is verified.
+The local production build and automated logic tests passed. **Live account access and writes have not been tested** because no account key was supplied. V1.5 is ready for controlled account acceptance testing, not a claim that every live account configuration is verified.
 
 Connecteam does not document conditional writes or a multi-record transaction for these operations. A small race remains between the final read and the write, and earlier successful writes are not rolled back if a later write fails. A network interruption or hosting timeout may leave an unknown outcome. Refresh and inspect affected records before retrying. Start with a small selection; long operations are subject to your hosting provider’s request-duration limit.
 

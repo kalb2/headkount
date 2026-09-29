@@ -7,6 +7,11 @@ import {
   applyOperation,
 } from "../lib/operations.js";
 import {
+  eligibilityMatrix,
+  qualifiesForJob,
+  qualifiesForBrand,
+} from "../lib/eligibility.js";
+import {
   collectPages,
   loadSmartGroups,
   ctFetch,
@@ -55,30 +60,135 @@ function mockApi(options = {}) {
   const state = {
     parent: structuredClone(parent),
     brand: structuredClone(child),
+    groups: options.groups || [
+      { id: 1, name: "Old", groupSegmentId: 7 },
+      { id: 2, name: "New", groupSegmentId: 7 },
+    ],
+    segments: options.segments || [
+      { id: 7, name: "Departments", color: "#3968bb", sortOrder: 1 },
+    ],
+    fields: options.fields || [
+      {
+        id: 30,
+        name: "Doors",
+        type: "dropdown",
+        dropdownOptions: [
+          { id: 10, value: "Grove" },
+          { id: 11, value: "Santa Monica" },
+        ],
+      },
+    ],
+    nextGroup: 100,
+    nextSegment: 200,
+    nextOption: 80,
+    users: options.users || [],
   };
   const calls = [];
   const request = async (key, path, opts = {}) => {
-    calls.push({
-      path,
-      method: opts.method || "GET",
-      body: opts.body ? JSON.parse(opts.body) : undefined,
-    });
+    const body = opts.body ? JSON.parse(opts.body) : undefined;
+    calls.push({ path, method: opts.method || "GET", body });
     if (options.hook) await options.hook({ state, calls, path, opts });
-    if (path === "/users/v1/smart-groups")
+    if (path.startsWith("/users/v1/smart-group-segments")) {
+      if (opts.method === "POST") {
+        const created = {
+          id: state.nextSegment++,
+          name: body.name,
+          color: body.color,
+          sortOrder: state.segments.length + 1,
+        };
+        state.segments.push(created);
+        return { requestId: "segment-req", data: created };
+      }
+      return { data: { segments: state.segments } };
+    }
+    if (path.startsWith("/users/v1/smart-groups")) {
+      if (opts.method === "POST") {
+        if (options.failGroupCreate)
+          throw new ConnecteamError("Group name already exists", 409, {
+            requestId: "group-409",
+          });
+        const created = {
+          id: state.nextGroup++,
+          name: body.name,
+          description: body.description,
+          groupSegmentId: body.groupSegmentId,
+          numberOfUsers: 0,
+        };
+        state.groups.push(created);
+        return { requestId: "group-req", data: created };
+      }
+      const id = Number(
+        new URLSearchParams(path.split("?")[1] || "").get("id"),
+      );
       return {
         data: {
-          smartGroups: [
-            { id: 1, name: "Old" },
-            { id: 2, name: "New" },
-          ],
+          smartGroups:
+            options.hideCreated && id >= 100
+              ? []
+              : state.groups.filter((group) => !id || group.id === id),
         },
       };
+    }
+    if (
+      path.startsWith("/users/v1/custom-fields/") &&
+      path.endsWith("/options") &&
+      opts.method === "POST"
+    ) {
+      const fieldId = Number(path.split("/")[4]);
+      const field = state.fields.find((item) => item.id === fieldId);
+      if (!field) throw new ConnecteamError("Missing field", 404);
+      const created = {
+        id: state.nextOption++,
+        value: body.value,
+        isDisabled: !!body.isDisabled,
+      };
+      field.dropdownOptions.push(created);
+      return { requestId: "option-req", data: created };
+    }
+    if (path.startsWith("/users/v1/custom-fields"))
+      return { data: { customFields: state.fields } };
+    if (path.startsWith("/users/v1/users")) {
+      if (opts.method === "PUT")
+        for (const update of body) {
+          const user = state.users.find(
+            (item) => item.userId === update.userId,
+          );
+          if (!user) throw new ConnecteamError("Missing user", 404);
+          const next = [...(user.customFields || [])];
+          for (const field of update.customFields || []) {
+            const index = next.findIndex(
+              (item) => item.customFieldId === field.customFieldId,
+            );
+            const stored = {
+              customFieldId: field.customFieldId,
+              value: field.value,
+            };
+            if (index >= 0) next[index] = stored;
+            else next.push(stored);
+          }
+          user.customFields = next;
+        }
+      const filter = new URLSearchParams(path.split("?")[1] || "")
+        .getAll("userIds")
+        .map(Number);
+      return {
+        data: {
+          users: filter.length
+            ? state.users.filter((user) => filter.includes(user.userId))
+            : state.users,
+        },
+      };
+    }
     if (path === "/scheduler/v1/schedulers")
       return { data: { schedulers: [{ schedulerId: 20, name: "Schedule" }] } };
     if (path === "/time-clock/v1/time-clocks")
       return { data: { timeClocks: [] } };
     if (path.startsWith("/jobs/v1/jobs?")) return { data: { jobs: [] } };
     if (path === "/jobs/v1/jobs" && opts.method === "POST") {
+      if (options.failJobCreate)
+        throw new ConnecteamError("Permission denied", 403, {
+          requestId: "job-403",
+        });
       const body = JSON.parse(opts.body)[0];
       state.created = {
         ...body,
@@ -335,16 +445,112 @@ test("expired previews cannot write", async () => {
   );
   assert.equal(m.calls.length, 0);
 });
-test("smart-group loading accepts documented response and rejects malformed success", async () => {
+test("smart-group loading accepts guide and OpenAPI list keys, including an empty list", async () => {
   assert.deepEqual(
     await loadSmartGroups("k", async () => ({
       data: { smartGroups: [{ id: "2", name: "MEJ" }] },
     })),
     [{ id: 2, name: "MEJ" }],
   );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({ data: { groups: [] } })),
+    [],
+  );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({
+      data: { groups: [{ id: 4, name: "OpenAPI" }] },
+    })),
+    [{ id: 4, name: "OpenAPI" }],
+  );
   await assert.rejects(
-    () => loadSmartGroups("k", async () => ({ data: { groups: [] } })),
-    /smartGroups is missing/,
+    () => loadSmartGroups("k", async () => ({ data: { users: [] } })),
+    /smart group list is missing/,
+  );
+});
+test("a smart-group list parse failure still allows create and assign", async () => {
+  const m = mockApi({ groups: [] });
+  const request = async (key, path, opts) => {
+    const method = opts?.method || "GET";
+    if (
+      path.startsWith("/users/v1/smart-groups") &&
+      method === "GET" &&
+      !path.includes("id=")
+    )
+      return { requestId: "groups-shape", data: { users: [] } };
+    return m.request(key, path, opts);
+  };
+  const plan = await previewOperation(
+    "key",
+    "addBrand",
+    {
+      parentId: "parent",
+      title: "Popup",
+      groupIds: [],
+      newGroupKeys: ["g1"],
+      newGroups: [
+        { key: "g1", name: "From unreadable list", groupSegmentId: 7 },
+      ],
+    },
+    request,
+  );
+  const result = await applyOperation("key", plan, request);
+  assert.equal(result.complete, true);
+  assert.equal(result.results[0].groupId, 100);
+});
+test("smart-group permission errors still block planning", async () => {
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          parentId: "parent",
+          title: "Popup",
+          groupIds: [],
+          newGroupKeys: ["g1"],
+          newGroups: [{ key: "g1", name: "Nope", groupSegmentId: 7 }],
+        },
+        async () => {
+          throw new ConnecteamError("GET /users/v1/smart-groups: denied", 403, {
+            requestId: "groups-403",
+          });
+        },
+      ),
+    (error) => {
+      assert.equal(error.status, 403);
+      assert.equal(error.payload.requestId, "groups-403");
+      return true;
+    },
+  );
+});
+test("an empty OpenAPI smart-group list still allows create and assign", async () => {
+  const m = mockApi({ groups: [] });
+  const request = async (key, path, opts) => {
+    const json = await m.request(key, path, opts);
+    if (json?.data?.smartGroups)
+      return { ...json, data: { groups: json.data.smartGroups } };
+    return json;
+  };
+  const plan = await previewOperation(
+    "key",
+    "addBrand",
+    {
+      parentId: "parent",
+      title: "Popup",
+      groupIds: [],
+      newGroupKeys: ["g1"],
+      newGroups: [{ key: "g1", name: "First group", groupSegmentId: 7 }],
+    },
+    request,
+  );
+  const result = await applyOperation("key", plan, request);
+  assert.equal(result.complete, true);
+  assert.equal(result.results[0].groupId, 100);
+  assert.equal(
+    m.calls.filter(
+      (call) => call.method === "POST" && call.path === "/jobs/v1/jobs",
+    ).length,
+    1,
   );
 });
 test("pagination detects repeated pages and tolerates echoed current offsets", async () => {
@@ -593,4 +799,603 @@ test("dropdown option creation rejects duplicates and verifies new options", asy
   );
   const result = await applyOperation("key", plan, request);
   assert.equal(result.results[0].status, "verified");
+});
+
+const newGroup = {
+  key: "grove-mej",
+  name: "Grove MEJ",
+  description: "Brand cohort",
+  segment: { name: "Locations", color: "#3968BB" },
+};
+test("creating a named group and assigning it happens in one preview and apply", async () => {
+  const m = mockApi();
+  const payload = {
+    ...door,
+    parentGroupIds: [],
+    parentNewGroupKeys: ["grove-mej"],
+    newGroups: [newGroup],
+    subJobs: [
+      { title: "MEJ", groupIds: [2], newGroupKeys: ["grove-mej"] },
+      { title: "Refi", groupIds: [], newGroupKeys: [] },
+    ],
+  };
+  const plan = await previewOperation("key", "createDoor", payload, m.request);
+  assert.ok(m.calls.every((call) => call.method === "GET"));
+  assert.equal(plan.groupCreates[0].filters.dropdownFilters.length, 0);
+  assert.match(plan.groups.find((group) => group.pending).name, /Grove MEJ/);
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  assert.deepEqual(
+    result.results.map((item) => item.status),
+    ["verified", "verified", "verified"],
+  );
+  const posts = m.calls.filter((call) => call.method === "POST");
+  assert.deepEqual(
+    posts.map((call) => call.path),
+    [
+      "/users/v1/smart-group-segments",
+      "/users/v1/smart-groups",
+      "/jobs/v1/jobs",
+    ],
+  );
+  assert.deepEqual(posts[0].body, { name: "Locations", color: "#3968bb" });
+  assert.deepEqual(posts[1].body, {
+    name: "Grove MEJ",
+    description: "Brand cohort",
+    groupSegmentId: 200,
+    filters: { operator: "and", dropdownFilters: [] },
+  });
+  assert.deepEqual(posts[2].body[0].assign.groupIds, [100]);
+  assert.deepEqual(posts[2].body[0].subJobs[0].assign.groupIds, [2, 100]);
+  assert.equal(posts[2].body[0].subJobs[1].useParentData, true);
+  assert.equal(result.results[1].groupId, 100);
+  assert.equal(result.results[1].requestId, "group-req");
+  assert.ok(m.calls.every((call) => call.method !== "DELETE"));
+});
+test("dropdown filters use fieldId and can target an existing segment", async () => {
+  const m = mockApi();
+  const plan = await previewOperation(
+    "key",
+    "addBrand",
+    {
+      parentId: "parent",
+      title: "Popup",
+      groupIds: [1],
+      newGroupKeys: ["filtered"],
+      newGroups: [
+        {
+          key: "filtered",
+          name: "Grove cohort",
+          groupSegmentId: 7,
+          operator: "or",
+          dropdownFilters: [{ fieldId: 30, optionIds: [11, 10] }],
+        },
+      ],
+    },
+    m.request,
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  const groupPost = m.calls.find(
+    (call) => call.method === "POST" && call.path === "/users/v1/smart-groups",
+  );
+  assert.deepEqual(groupPost.body.filters, {
+    operator: "or",
+    dropdownFilters: [{ fieldId: 30, optionIds: [11, 10] }],
+  });
+  assert.equal(groupPost.body.customFieldId, undefined);
+  const jobPost = m.calls.find(
+    (call) => call.method === "POST" && call.path === "/jobs/v1/jobs",
+  );
+  assert.deepEqual(jobPost.body[0].assign.groupIds, [1, 100]);
+  assert.equal(
+    m.calls.filter(
+      (call) =>
+        call.path.startsWith("/users/v1/smart-group-segments") &&
+        call.method === "POST",
+    ).length,
+    0,
+  );
+});
+test("smart group creation rejects conflicts before any write", async () => {
+  const m = mockApi();
+  const base = {
+    parentId: "parent",
+    title: "Popup",
+    groupIds: [],
+    newGroupKeys: ["g1"],
+  };
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          ...base,
+          newGroups: [{ key: "g1", name: "Old", groupSegmentId: 7 }],
+        },
+        m.request,
+      ),
+    /already exists/,
+  );
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          ...base,
+          newGroups: [{ key: "g1", name: "Fresh", groupSegmentId: 99 }],
+        },
+        m.request,
+      ),
+    /not a valid segment/,
+  );
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          ...base,
+          newGroups: [
+            {
+              key: "g1",
+              name: "Fresh",
+              groupSegmentId: 7,
+              dropdownFilters: [{ fieldId: 30, optionIds: [99] }],
+            },
+          ],
+        },
+        m.request,
+      ),
+    /not a valid choice/,
+  );
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          ...base,
+          newGroups: [
+            {
+              key: "g1",
+              name: "Fresh",
+              segment: { name: "Departments", color: "#abcdef" },
+            },
+          ],
+        },
+        m.request,
+      ),
+    /Select it instead of creating a new one/,
+  );
+  await assert.rejects(
+    () =>
+      previewOperation(
+        "key",
+        "addBrand",
+        {
+          ...base,
+          newGroups: [
+            {
+              key: "g1",
+              name: "Fresh",
+              groupSegmentId: 7,
+              dropdownFilters: [{ customFieldId: 30, optionIds: [10] }],
+            },
+          ],
+        },
+        m.request,
+      ),
+    /fieldId/,
+  );
+  assert.ok(m.calls.every((call) => call.method === "GET"));
+});
+test("a group-name conflict from Connecteam keeps the assignment unattempted", async () => {
+  const m = mockApi({ failGroupCreate: true });
+  const plan = await previewOperation(
+    "key",
+    "repairSubJobs",
+    {
+      newGroups: [{ key: "g1", name: "Extra", groupSegmentId: 7 }],
+      repairs: [
+        {
+          jobId: "brand",
+          mode: "add",
+          groupIds: [],
+          newGroupKeys: ["g1"],
+        },
+      ],
+    },
+    m.request,
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.deepEqual(
+    result.results.map((item) => item.status),
+    ["failed", "not-attempted"],
+  );
+  assert.equal(result.results[0].requestId, "group-409");
+  assert.match(result.results[0].error, /Request ID: group-409/);
+  assert.ok(m.calls.every((call) => call.method !== "PUT"));
+});
+test("a created group is kept when the later assignment write fails", async () => {
+  const m = mockApi({ failJobCreate: true });
+  const plan = await previewOperation(
+    "key",
+    "addBrand",
+    {
+      parentId: "parent",
+      title: "Popup",
+      groupIds: [],
+      newGroupKeys: ["g1"],
+      newGroups: [{ key: "g1", name: "Popup group", groupSegmentId: 7 }],
+    },
+    m.request,
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.deepEqual(
+    result.results.map((item) => item.status),
+    ["verified", "failed"],
+  );
+  assert.equal(result.results[1].requestId, "job-403");
+  assert.match(result.results[1].note, /kept/);
+  assert.equal(m.state.groups.at(-1).name, "Popup group");
+});
+test("unverified group readback does not assign the new id", async () => {
+  const m = mockApi({ hideCreated: true });
+  const plan = await previewOperation(
+    "key",
+    "createDoor",
+    {
+      ...door,
+      parentNewGroupKeys: ["g1"],
+      newGroups: [{ key: "g1", name: "Hidden", groupSegmentId: 7 }],
+    },
+    m.request,
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.results[0].status, "saved-unverified");
+  assert.equal(result.results.at(-1).status, "not-attempted");
+  assert.equal(
+    m.calls.filter(
+      (call) => call.path === "/jobs/v1/jobs" && call.method === "POST",
+    ).length,
+    0,
+  );
+});
+test("repair can add one shared new group without dropping direct users", async () => {
+  const m = mockApi();
+  const plan = await previewOperation(
+    "key",
+    "repairSubJobs",
+    {
+      newGroups: [
+        {
+          key: "g1",
+          name: "Shared",
+          groupSegmentId: 7,
+        },
+      ],
+      repairs: [
+        {
+          jobId: "brand",
+          mode: "replace",
+          groupIds: [],
+          newGroupKeys: ["g1"],
+        },
+      ],
+    },
+    m.request,
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  assert.deepEqual(m.state.brand.assign, {
+    type: "both",
+    userIds: [8],
+    groupIds: [100],
+  });
+  assert.equal(m.state.brand.code, "MEJ");
+  assert.equal(m.state.brand.customFields[0].customFieldId, 10);
+});
+test("several new groups can share one new segment", async () => {
+  const m = mockApi({ groups: [] });
+  const plan = await previewOperation(
+    "key",
+    "createDoor",
+    {
+      ...door,
+      parentGroupIds: [],
+      parentNewGroupKeys: ["a", "b"],
+      newGroups: [
+        {
+          key: "a",
+          name: "Alpha",
+          segment: { name: "Locations", color: "#112233" },
+        },
+        {
+          key: "b",
+          name: "Beta",
+          segment: { name: "Locations", color: "#112233" },
+        },
+      ],
+      subJobs: [{ title: "MEJ", groupIds: [], newGroupKeys: ["a"] }],
+    },
+    m.request,
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  assert.equal(
+    m.calls.filter(
+      (call) =>
+        call.method === "POST" &&
+        call.path === "/users/v1/smart-group-segments",
+    ).length,
+    1,
+  );
+  assert.equal(
+    m.calls.filter(
+      (call) =>
+        call.method === "POST" && call.path === "/users/v1/smart-groups",
+    ).length,
+    2,
+  );
+});
+const cohort = { fieldId: 30, groupIds: [5], optionIds: [11] };
+const people = [
+  {
+    userId: 1,
+    firstName: "Alice",
+    lastName: "Example",
+    smartGroupsIds: [5],
+    customFields: [
+      { customFieldId: 30, value: [{ id: 10 }] },
+      { customFieldId: 40, value: [{ id: 20 }, { id: 21 }] },
+    ],
+  },
+  {
+    userId: 2,
+    firstName: "Bob",
+    lastName: "Example",
+    smartGroupsIds: [5],
+    customFields: [{ customFieldId: 40, value: [{ id: 22 }] }],
+  },
+  {
+    userId: 3,
+    firstName: "Carol",
+    lastName: "Example",
+    smartGroupsIds: [],
+    customFields: [{ customFieldId: 40, value: [{ id: 20 }] }],
+  },
+  {
+    userId: 4,
+    firstName: "Dave",
+    lastName: "Example",
+    smartGroupsIds: [5],
+    customFields: [],
+  },
+  {
+    userId: 5,
+    firstName: "Erin",
+    lastName: "Example",
+    smartGroupsIds: [9],
+    customFields: [
+      { customFieldId: 30, value: [{ id: 11 }] },
+      {
+        customFieldId: 40,
+        value: [{ id: 20 }, { id: 21 }, { id: 22 }, { id: 23 }],
+      },
+    ],
+  },
+];
+test("eligibility is the intersection of job qualification and one brand", () => {
+  assert.equal(qualifiesForJob(people[2], cohort), false);
+  assert.equal(
+    qualifiesForBrand(people[2], { fieldId: 40, optionId: 20 }),
+    true,
+  );
+  assert.equal(qualifiesForJob(people[3], cohort), true);
+  assert.equal(
+    qualifiesForBrand(people[3], { fieldId: 40, optionId: 20, groupIds: [] }),
+    false,
+  );
+  const matrix = eligibilityMatrix(people, {
+    cohort,
+    brands: [
+      { key: "mej", title: "MEJ", fieldId: 40, optionId: 20 },
+      { key: "refi", title: "Refi", fieldId: 40, optionId: 21 },
+      { key: "popup", title: "Popup", fieldId: 40, optionId: 22 },
+      { key: "labs", title: "Labs", fieldId: 40, optionId: 23 },
+    ],
+  });
+  assert.deepEqual(
+    matrix.map((row) => row.userIds),
+    [[1, 5], [1, 5], [2, 5], [5]],
+  );
+  const alice = new Set(
+    matrix.filter((row) => row.userIds.includes(1)).map((row) => row.title),
+  );
+  const bob = new Set(
+    matrix.filter((row) => row.userIds.includes(2)).map((row) => row.title),
+  );
+  assert.equal(alice.has("Popup"), false);
+  assert.equal(bob.has("MEJ"), false);
+  assert.equal(alice.size, 2);
+});
+function eligibilityFixture(users = people, groups) {
+  return mockApi({
+    users,
+    groups: groups || [
+      { id: 5, name: "West", groupSegmentId: 7 },
+      { id: 9, name: "Visiting", groupSegmentId: 7 },
+    ],
+    fields: [
+      {
+        id: 30,
+        name: "Doors",
+        type: "dropdown",
+        isMultiSelect: true,
+        dropdownOptions: [
+          { id: 10, value: "Old Grove" },
+          { id: 11, value: "West" },
+        ],
+      },
+      {
+        id: 40,
+        name: "Brands",
+        type: "dropdown",
+        isMultiSelect: true,
+        dropdownOptions: [
+          { id: 20, value: "MEJ" },
+          { id: 21, value: "Refi" },
+          { id: 22, value: "Popup" },
+          { id: 23, value: "Labs" },
+        ],
+      },
+    ],
+  });
+}
+const eligibilityDoor = {
+  title: "Grove",
+  instanceIds: [20],
+  parentGroupIds: [],
+  gps: { address: "", latitude: "", longitude: "" },
+  subJobs: [
+    { title: "MEJ", groupIds: [], brandOptionId: 20 },
+    { title: "Refi", groupIds: [], brandOptionId: 21 },
+    { title: "Popup", groupIds: [], brandOptionId: 22 },
+    { title: "Labs", groupIds: [], brandOptionId: 23 },
+  ],
+  eligibility: {
+    doorFieldId: 30,
+    brandFieldId: 40,
+    doorValue: "Grove",
+    cohortGroupIds: [5],
+    cohortOptionIds: [11],
+    groupSegmentId: 7,
+  },
+};
+test("a new job batches brand groups and tags only the job-and-brand intersection", async () => {
+  const m = eligibilityFixture();
+  const plan = await previewOperation(
+    "key",
+    "createDoor",
+    eligibilityDoor,
+    m.request,
+  );
+  assert.equal(plan.groupCreates.length, 5);
+  assert.equal(plan.groupCreates[0].filters.dropdownFilters.length, 1);
+  const brandFilter = plan.groupCreates[1].filters;
+  assert.equal(brandFilter.operator, "and");
+  assert.deepEqual(
+    brandFilter.dropdownFilters.map((filter) => filter.fieldId),
+    [30, 40],
+  );
+  assert.deepEqual(
+    plan.eligibility.brands.map((brand) => brand.userIds),
+    [[1, 5], [1, 5], [2, 5], [5]],
+  );
+  assert.deepEqual(
+    plan.eligibility.userUpdates.map((user) => user.userId),
+    [1, 2, 4, 5],
+  );
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  const groupPosts = m.calls.filter(
+    (call) => call.method === "POST" && call.path === "/users/v1/smart-groups",
+  );
+  assert.equal(groupPosts.length, 5);
+  assert.equal(groupPosts[1].body.filters.operator, "and");
+  assert.deepEqual(
+    groupPosts[1].body.filters.dropdownFilters.map((filter) => filter.fieldId),
+    [30, 40],
+  );
+  assert.equal(
+    groupPosts[1].body.filters.dropdownFilters[0].optionIds[0] >= 80,
+    true,
+  );
+  const userPosts = m.calls.filter(
+    (call) => call.method === "PUT" && call.path.startsWith("/users/v1/users"),
+  );
+  assert.deepEqual(
+    userPosts.map((call) => call.body[0].userId),
+    [1, 2, 4, 5],
+  );
+  assert.deepEqual(
+    m.state.users[0].customFields.find((field) => field.customFieldId === 30)
+      .value,
+    [{ id: 10 }, { id: 80 }],
+  );
+  assert.deepEqual(
+    m.state.users[0].customFields.find((field) => field.customFieldId === 40)
+      .value,
+    [{ id: 20 }, { id: 21 }],
+  );
+  assert.equal(
+    m.state.users.find((user) => user.userId === 3).customFields.length,
+    1,
+  );
+  assert.deepEqual(m.state.created.assign.groupIds, [100]);
+  assert.deepEqual(
+    m.state.created.subJobs.map((sub) => sub.assign.groupIds),
+    [[101], [102], [103], [104]],
+  );
+});
+test("an empty smart-group list still allows an eligibility setup", async () => {
+  const m = eligibilityFixture(
+    [
+      {
+        userId: 5,
+        firstName: "Erin",
+        lastName: "Example",
+        smartGroupsIds: [],
+        customFields: [
+          { customFieldId: 30, value: [{ id: 11 }] },
+          { customFieldId: 40, value: [{ id: 20 }] },
+        ],
+      },
+    ],
+    [],
+  );
+  const plan = await previewOperation(
+    "key",
+    "createDoor",
+    {
+      ...eligibilityDoor,
+      subJobs: [{ title: "MEJ", groupIds: [], brandOptionId: 20 }],
+      eligibility: {
+        ...eligibilityDoor.eligibility,
+        cohortGroupIds: [],
+        cohortOptionIds: [11],
+      },
+    },
+    m.request,
+  );
+  assert.equal(plan.eligibility.brands[0].userIds[0], 5);
+  const result = await applyOperation("key", plan, m.request);
+  assert.equal(result.complete, true);
+  assert.equal(m.state.users[0].customFields[0].value[1].id, 80);
+});
+test("a single-select field cannot be the eligibility tag", async () => {
+  const m = eligibilityFixture();
+  m.state.fields[0].isMultiSelect = false;
+  await assert.rejects(
+    () => previewOperation("key", "createDoor", eligibilityDoor, m.request),
+    /multiple selections/,
+  );
+});
+test("smart-group permission errors still block an eligibility setup", async () => {
+  await assert.rejects(
+    () =>
+      previewOperation("key", "createDoor", eligibilityDoor, async () => {
+        throw new ConnecteamError("GET /users/v1/smart-groups: denied", 403, {
+          requestId: "groups-403",
+        });
+      }),
+    (error) => {
+      assert.equal(error.status, 403);
+      assert.equal(error.payload.requestId, "groups-403");
+      return true;
+    },
+  );
 });

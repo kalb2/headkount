@@ -42,14 +42,19 @@ function fixture() {
         firstName: "Jane",
         lastName: "Example",
         email: "jane@example.test",
-        customFields: [{ customFieldId: 30, value: [{ id: 10 }] }],
+        customFields: [
+          { customFieldId: 30, value: [{ id: 10 }] },
+          { customFieldId: 40, value: [{ id: 20 }] },
+        ],
+        smartGroupsIds: [1],
       },
       {
         userId: 102,
         firstName: "Sam",
         lastName: "Example",
         email: "sam@example.test",
-        customFields: [],
+        customFields: [{ customFieldId: 40, value: [{ id: 21 }] }],
+        smartGroupsIds: [2],
       },
     ],
     fields: [
@@ -62,6 +67,17 @@ function fixture() {
         dropdownOptions: [
           { id: 10, value: "The Grove" },
           { id: 11, value: "Santa Monica" },
+        ],
+      },
+      {
+        id: 40,
+        name: "Brands",
+        type: "dropdown",
+        isMultiSelect: true,
+        isRequired: false,
+        dropdownOptions: [
+          { id: 20, value: "MEJ" },
+          { id: 21, value: "Refi" },
         ],
       },
     ],
@@ -87,6 +103,39 @@ globalThis.fetch = async (input, options = {}) => {
     });
   if (path === "/me")
     return response({ companyName: "Example Operations (test data)" });
+  if (!state.smartGroups)
+    state.smartGroups =
+      key === "test-empty-groups"
+        ? []
+        : [
+            { id: 1, name: "MEJ Qualified", usersCount: 12, groupSegmentId: 7 },
+            { id: 2, name: "Refi Qualified", usersCount: 8, groupSegmentId: 7 },
+            {
+              id: 3,
+              name: "House Labs Qualified",
+              usersCount: 14,
+              groupSegmentId: 7,
+            },
+          ];
+  if (!state.segments)
+    state.segments = [
+      { id: 7, name: "Departments", color: "#3968bb", sortOrder: 1 },
+    ];
+  state.nextGroup ??= 50;
+  state.nextSegment ??= 80;
+  if (path === "/users/v1/smart-group-segments") {
+    if (method === "POST") {
+      const created = {
+        id: state.nextSegment++,
+        name: body.name,
+        color: body.color,
+        sortOrder: state.segments.length + 1,
+      };
+      state.segments.push(created);
+      return response(created);
+    }
+    return response({ segments: state.segments });
+  }
   if (path === "/users/v1/smart-groups") {
     if (key === "test-groups-error")
       return new Response(
@@ -96,15 +145,49 @@ globalThis.fetch = async (input, options = {}) => {
         }),
         { status: 403 },
       );
+    if (key === "test-groups-shape" && method !== "POST")
+      return new Response(
+        JSON.stringify({ requestId: "groups-shape", data: { users: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    if (key === "test-openapi-groups" && method !== "POST")
+      return response({
+        groups: [
+          {
+            id: 9,
+            name: "Live shape",
+            groupSegmentId: 7,
+            numberOfUsers: 1,
+          },
+        ],
+      });
+    if (method === "POST") {
+      const duplicate = state.smartGroups.some(
+        (group) => group.name.toLowerCase() === body.name.toLowerCase(),
+      );
+      if (duplicate)
+        return new Response(
+          JSON.stringify({
+            requestId: "group-409",
+            detail: "Group name already exists",
+          }),
+          { status: 409 },
+        );
+      const created = {
+        id: state.nextGroup++,
+        name: body.name,
+        description: body.description,
+        groupSegmentId: body.groupSegmentId,
+        numberOfUsers: 0,
+      };
+      state.smartGroups.push(created);
+      return response(created);
+    }
+    const id = Number(url.searchParams.get("id"));
     return response({
-      smartGroups:
-        key === "test-empty-groups"
-          ? []
-          : [
-              { id: 1, name: "MEJ Qualified", usersCount: 12 },
-              { id: 2, name: "Refi Qualified", usersCount: 8 },
-              { id: 3, name: "House Labs Qualified", usersCount: 14 },
-            ],
+      smartGroups: id
+        ? state.smartGroups.filter((group) => group.id === id)
+        : state.smartGroups,
     });
   }
   if (path === "/scheduler/v1/schedulers")
@@ -115,15 +198,30 @@ globalThis.fetch = async (input, options = {}) => {
     return response({ timeClocks: [] });
   if (path === "/users/v1/custom-fields")
     return response({ customFields: state.fields });
-  if (path.endsWith("/custom-fields/30/options") && method === "POST") {
-    state.fields[0].dropdownOptions.push({ id: 12, ...body });
-    return response({ id: 12, ...body });
+  if (/\/custom-fields\/\d+\/options$/.test(path) && method === "POST") {
+    const fieldId = Number(path.split("/")[4]);
+    const field = state.fields.find((item) => item.id === fieldId);
+    const created = { id: fieldId === 30 ? 12 : 50, ...body };
+    field.dropdownOptions.push(created);
+    return response(created);
   }
   if (path === "/users/v1/users") {
     if (method === "PUT")
       for (const update of body) {
-        const user = state.users.find((u) => u.userId === update.userId);
-        user.customFields = update.customFields;
+        const user = state.users.find((item) => item.userId === update.userId);
+        const next = [...(user.customFields || [])];
+        for (const field of update.customFields || []) {
+          const index = next.findIndex(
+            (item) => item.customFieldId === field.customFieldId,
+          );
+          const stored = {
+            customFieldId: field.customFieldId,
+            value: field.value,
+          };
+          if (index >= 0) next[index] = stored;
+          else next.push(stored);
+        }
+        user.customFields = next;
       }
     const filter = url.searchParams.getAll("userIds").map(Number);
     return response({
