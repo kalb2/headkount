@@ -610,3 +610,99 @@ test("dropdown option creation rejects duplicates and verifies new options", asy
   const result = await applyOperation("key", plan, request);
   assert.equal(result.results[0].status, "verified");
 });
+
+test("qualified door creation builds Door AND Brand smart groups before creating jobs", async () => {
+  const state = {
+    doorField: {
+      id: 100,
+      name: "Doors",
+      type: "dropdown",
+      isMultiSelect: true,
+      dropdownOptions: [],
+    },
+    brandField: {
+      id: 200,
+      name: "Brands",
+      type: "dropdown",
+      isMultiSelect: true,
+      dropdownOptions: [{ id: 20, value: "MEJ", isDeleted: false, isDisabled: false }],
+    },
+    groups: [],
+    job: null,
+  };
+  const calls = [];
+  let nextGroupId = 300;
+  const request = async (key, path, opts = {}) => {
+    calls.push({ path, method: opts.method || "GET", body: opts.body ? JSON.parse(opts.body) : null });
+    if (path.startsWith("/users/v1/custom-fields?customFieldTypes=dropdown"))
+      return { data: { customFields: [structuredClone(state.doorField), structuredClone(state.brandField)] } };
+    if (path.startsWith("/users/v1/custom-fields?customFieldIds=100"))
+      return { data: { customFields: [structuredClone(state.doorField)] } };
+    if (path === "/users/v1/smart-group-segments")
+      return { data: { segments: [{ id: 9, name: "Headkount" }] } };
+    if (path === "/users/v1/smart-groups" && !opts.method)
+      return { data: { groups: structuredClone(state.groups) } };
+    if (path === "/scheduler/v1/schedulers")
+      return { data: { schedulers: [{ schedulerId: 55, name: "Main", isArchived: false }] } };
+    if (path === "/time-clock/v1/time-clocks")
+      return { data: { timeClocks: [] } };
+    if (path.startsWith("/jobs/v1/jobs?"))
+      return { data: { jobs: [] } };
+    if (path === "/users/v1/custom-fields/100/options" && opts.method === "POST") {
+      const body = JSON.parse(opts.body);
+      const option = { id: 10, value: body.value, isDeleted: false, isDisabled: false };
+      state.doorField.dropdownOptions.push(option);
+      return { data: option };
+    }
+    if (path === "/users/v1/smart-groups" && opts.method === "POST") {
+      const body = JSON.parse(opts.body);
+      const group = { id: nextGroupId++, ...body };
+      state.groups.push(group);
+      return { data: group };
+    }
+    if (path === "/jobs/v1/jobs" && opts.method === "POST") {
+      const body = JSON.parse(opts.body)[0];
+      state.job = {
+        ...body,
+        jobId: "created",
+        subJobs: body.subJobs.map((sub, index) => ({ ...sub, jobId: `sub-${index}`, parentId: "created" })),
+      };
+      return { data: { jobs: [{ jobId: "created" }] } };
+    }
+    if (path === "/jobs/v1/jobs/created")
+      return { data: { job: structuredClone(state.job) } };
+    throw new Error(`Unexpected mock request: ${opts.method || "GET"} ${path}`);
+  };
+
+  const input = {
+    title: "Grove",
+    code: "",
+    description: "Store",
+    gps: { address: "LA", latitude: "", longitude: "" },
+    instanceIds: [55],
+    doorFieldId: 100,
+    brandFieldId: 200,
+    segmentId: 9,
+    subJobs: [{ title: "MEJ", brandOptionId: 20 }],
+  };
+  const plan = await previewOperation("key", "createQualifiedDoor", input, request);
+  assert.equal(plan.needsDoorOption, true);
+  assert.equal(plan.groupSpecs.length, 2);
+
+  const result = await applyOperation("key", plan, request);
+  assert.equal(result.complete, true);
+  assert.equal(state.groups.length, 2);
+  assert.deepEqual(state.groups[0].filters, [
+    { customFieldId: 100, optionIds: [10] },
+  ]);
+  assert.deepEqual(state.groups[1].filters, [
+    { customFieldId: 100, optionIds: [10] },
+    { customFieldId: 200, optionIds: [20] },
+  ]);
+  assert.equal(state.job.assign.groupIds.length, 1);
+  assert.equal(state.job.subJobs[0].assign.groupIds.length, 1);
+  assert.ok(
+    calls.findIndex((call) => call.path === "/jobs/v1/jobs" && call.method === "POST") >
+      calls.findIndex((call) => call.path === "/users/v1/smart-groups" && call.method === "POST"),
+  );
+});
