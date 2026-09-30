@@ -187,7 +187,10 @@ export default function Home() {
         plan: submitted,
       });
       setReport(result);
-      if (result.complete && submitted.action === "createDoor") {
+      if (
+        result.complete &&
+        ["createDoor", "createQualifiedDoor"].includes(submitted.action)
+      ) {
         setEditor(false);
         setDoor(newDoor());
       }
@@ -1324,7 +1327,7 @@ function Preview({ plan, onCancel, onConfirm }) {
           <p className="eyebrow">Fresh Connecteam preview</p>
           <h3 id="preview-title">
             Review{" "}
-            {plan.action === "createDoor"
+            {["createDoor", "createQualifiedDoor"].includes(plan.action)
               ? "door setup"
               : ["repairSubJobs", "addBrand"].includes(plan.action)
                 ? "brand assignments"
@@ -1339,6 +1342,75 @@ function Preview({ plan, onCancel, onConfirm }) {
         Nothing has been written. The app checks current data again before
         applying. This preview expires in 10 minutes.
       </Notice>
+      {plan.action === "createQualifiedDoor" && (
+        <>
+          <h3>{plan.doorName}</h3>
+          <p>
+            <strong>Door eligibility field:</strong> {plan.doorField.name}
+            <br />
+            <strong>Brand eligibility field:</strong> {plan.brandField.name}
+            <br />
+            <strong>Door option:</strong>{" "}
+            {plan.needsDoorOption
+              ? `Create “${plan.doorName}”`
+              : `Reuse “${plan.doorName}”`}
+          </p>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job / sub-job</th>
+                  <th>Qualification</th>
+                  <th>Smart group</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <strong>{plan.doorName}</strong>
+                  </td>
+                  <td>Door only</td>
+                  <td>
+                    {plan.groupSpecs.find((spec) => spec.key === "door")?.name}
+                    <small>
+                      {plan.groupSpecs.find((spec) => spec.key === "door")?.existing
+                        ? "Reuse existing Headkount group"
+                        : "Create dynamic smart group"}
+                    </small>
+                  </td>
+                </tr>
+                {plan.brandOptions.map(({ title, option }) => {
+                  const spec = plan.groupSpecs.find(
+                    (candidate) => candidate.key === `brand:${title}`,
+                  );
+                  return (
+                    <tr key={title}>
+                      <td>
+                        {plan.doorName} → <strong>{title}</strong>
+                      </td>
+                      <td>
+                        {plan.doorName} AND {option.value}
+                      </td>
+                      <td>
+                        {spec?.name}
+                        <small>
+                          {spec?.existing
+                            ? "Reuse existing Headkount group"
+                            : "Create dynamic smart group"}
+                        </small>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Notice>
+            Users will move into or out of these Smart Groups automatically as
+            their Door and Brand user-detail values change.
+          </Notice>
+        </>
+      )}
       {plan.action === "createDoor" && (
         <>
           <h3>{parent.title}</h3>
@@ -1517,7 +1589,19 @@ function Preview({ plan, onCancel, onConfirm }) {
         <summary>Exact request details</summary>
         <pre>
           {JSON.stringify(
-            plan.body || plan.records.map((r) => r.after),
+            plan.action === "createQualifiedDoor"
+              ? {
+                  doorOption: plan.needsDoorOption
+                    ? { fieldId: plan.doorField.id, value: plan.doorName }
+                    : { reuseOptionId: plan.doorOption?.id },
+                  smartGroups: plan.groupSpecs.map((spec) => ({
+                    name: spec.name,
+                    reuseGroupId: spec.existing?.id || null,
+                    brandOptionId: spec.brandOptionId,
+                  })),
+                  instances: plan.requestedInstances,
+                }
+              : plan.body || plan.records.map((r) => r.after),
             null,
             2,
           )}
@@ -1528,7 +1612,7 @@ function Preview({ plan, onCancel, onConfirm }) {
           Back to editing
         </Button>
         <Button onClick={onConfirm}>
-          {plan.action === "createDoor"
+          {["createDoor", "createQualifiedDoor"].includes(plan.action)
             ? "Create complete setup"
             : "Apply reviewed changes"}
         </Button>
