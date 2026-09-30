@@ -350,11 +350,17 @@ test("smart-group loading accepts documented and empty response shapes, and pres
     await loadSmartGroups("k", async () => ({ data: {} })),
     [],
   );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({
+      data: { groups: [{ id: 7, name: "Crew" }] },
+    })),
+    [{ id: 7, name: "Crew" }],
+  );
   await assert.rejects(
-    () => loadSmartGroups("k", async () => ({ data: { groups: [] } })),
+    () => loadSmartGroups("k", async () => ({ data: { somethingElse: [] } })),
     (e) =>
       /smartGroups is missing/.test(e.message) &&
-      e.payload?.data?.groups?.length === 0,
+      Array.isArray(e.payload?.data?.somethingElse),
   );
 });
 test("pagination detects repeated pages and tolerates echoed current offsets", async () => {
