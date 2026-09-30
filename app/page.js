@@ -7,7 +7,7 @@ const newDoor = () => ({
   gps: { address: "", latitude: "", longitude: "" },
   instanceIds: [],
   parentGroupIds: [],
-  subJobs: [{ title: "", groupIds: [] }],
+  subJobs: [],
 });
 const toggle = (values, id) =>
   values.includes(id) ? values.filter((x) => x !== id) : [...values, id];
@@ -472,6 +472,8 @@ function Metric({ label, value }) {
 function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const set = (key, value) => setDoor((d) => ({ ...d, [key]: value }));
   const groups = snapshot.smartGroups;
+  const [subItemEditor, setSubItemEditor] = useState(null);
+  const [subItemSearch, setSubItemSearch] = useState("");
   const schedules = snapshot.schedulers
     .filter((s) => !s.isArchived)
     .map((s) => ({ id: s.schedulerId, name: s.name }));
@@ -624,59 +626,205 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           value={door.parentGroupIds}
           onChange={(v) => set("parentGroupIds", v)}
         />
-        <h3>3. Brand sub-jobs</h3>
+        <h3>3. Sub items</h3>
         <p className="muted">
-          Each custom assignment uses the door’s description and location at
-          creation. Later parent changes will not flow into those custom
-          sub-jobs.
+          Add each brand as a sub item, then choose whether it inherits the
+          parent settings or uses its own qualified smart groups.
         </p>
-        {door.subJobs.map((s, i) => (
-          <div className="brandCard" key={i}>
-            <div className="formGrid two">
-              <Field label={`Brand ${i + 1} name`}>
+        <div className="subItemsPanel">
+          <div className="subItemsToolbar">
+            <strong>Sub items ({door.subJobs.length})</strong>
+            <input
+              aria-label="Search sub items"
+              placeholder="Search"
+              value={subItemSearch}
+              onChange={(e) => setSubItemSearch(e.target.value)}
+            />
+            <Button
+              kind="ghost"
+              onClick={() =>
+                setSubItemEditor({
+                  index: null,
+                  title: "",
+                  groupIds: [],
+                  inherit: true,
+                })
+              }
+            >
+              + Add sub item
+            </Button>
+          </div>
+          <div className="subItemsList">
+            {door.subJobs
+              .map((item, index) => ({ item, index }))
+              .filter(({ item }) =>
+                item.title.toLowerCase().includes(subItemSearch.toLowerCase()),
+              )
+              .map(({ item, index }) => (
+                <button
+                  type="button"
+                  className="subItemRow"
+                  key={index}
+                  onClick={() =>
+                    setSubItemEditor({
+                      index,
+                      title: item.title,
+                      groupIds: item.groupIds,
+                      inherit: item.groupIds.length === 0,
+                    })
+                  }
+                >
+                  <span className="subItemDot" />
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>
+                      {item.groupIds.length
+                        ? `${item.groupIds.length} qualified smart group(s)`
+                        : "Uses parent settings"}
+                    </small>
+                  </span>
+                  <span className="subItemChevron">›</span>
+                </button>
+              ))}
+            {!door.subJobs.length && (
+              <p className="emptyBuilder">No sub items yet. Add the first brand.</p>
+            )}
+          </div>
+        </div>
+
+        {subItemEditor && (
+          <div
+            className="modalBack"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setSubItemEditor(null);
+            }}
+          >
+            <div className="modal subItemModal" role="dialog" aria-modal="true">
+              <div className="modalHead">
+                <div>
+                  <p className="eyebrow">
+                    {subItemEditor.index === null ? "Add sub item" : "Edit sub item"}
+                  </p>
+                  <h3>Sub-item settings</h3>
+                </div>
+                <button
+                  className="x"
+                  aria-label="Close sub-item editor"
+                  onClick={() => setSubItemEditor(null)}
+                >
+                  ×
+                </button>
+              </div>
+
+              <label className="inheritRow">
+                <input
+                  type="checkbox"
+                  checked={subItemEditor.inherit}
+                  onChange={(e) =>
+                    setSubItemEditor((current) => ({
+                      ...current,
+                      inherit: e.target.checked,
+                      groupIds: e.target.checked ? [] : current.groupIds,
+                    }))
+                  }
+                />
+                <span>Use same settings as parent item</span>
+              </label>
+
+              <Field label="Job name">
                 <input
                   maxLength={128}
                   placeholder="MEJ"
-                  value={s.title}
-                  onChange={(e) => update(i, { title: e.target.value })}
+                  value={subItemEditor.title}
+                  onChange={(e) =>
+                    setSubItemEditor((current) => ({
+                      ...current,
+                      title: e.target.value,
+                    }))
+                  }
                 />
               </Field>
-              <div>
-                <Groups
-                  label={`Brand ${i + 1} groups`}
-                  groups={groups}
-                  value={s.groupIds}
-                  onChange={(v) => update(i, { groupIds: v })}
-                />
-                <small>
-                  {s.groupIds.length
-                    ? "Custom smart-group assignment"
-                    : "Inherits parent groups, description and location"}
-                </small>
+
+              <div className="subItemInherited">
+                <span>Description</span>
+                <p>
+                  {subItemEditor.inherit
+                    ? door.description || "Uses the parent description"
+                    : door.description || "Copies the parent description at creation"}
+                </p>
+              </div>
+
+              <div className="subItemQualified">
+                <div>
+                  <span>Qualified</span>
+                  <strong>
+                    {subItemEditor.inherit
+                      ? "Uses parent qualification"
+                      : `${subItemEditor.groupIds.length} smart group(s) selected`}
+                  </strong>
+                </div>
+                {!subItemEditor.inherit && (
+                  <Groups
+                    label="Groups"
+                    groups={groups}
+                    value={subItemEditor.groupIds}
+                    onChange={(groupIds) =>
+                      setSubItemEditor((current) => ({
+                        ...current,
+                        groupIds,
+                      }))
+                    }
+                  />
+                )}
+              </div>
+
+              <div className="modalActions subItemActions">
+                {subItemEditor.index !== null && (
+                  <Button
+                    kind="ghost"
+                    onClick={() => {
+                      set(
+                        "subJobs",
+                        door.subJobs.filter(
+                          (_, index) => index !== subItemEditor.index,
+                        ),
+                      );
+                      setSubItemEditor(null);
+                    }}
+                  >
+                    Remove sub item
+                  </Button>
+                )}
+                <span />
+                <Button kind="ghost" onClick={() => setSubItemEditor(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    !subItemEditor.title.trim() ||
+                    (!subItemEditor.inherit &&
+                      subItemEditor.groupIds.length === 0)
+                  }
+                  onClick={() => {
+                    const nextItem = {
+                      title: subItemEditor.title.trim(),
+                      groupIds: subItemEditor.inherit
+                        ? []
+                        : subItemEditor.groupIds,
+                    };
+                    if (subItemEditor.index === null)
+                      set("subJobs", [...door.subJobs, nextItem]);
+                    else update(subItemEditor.index, nextItem);
+                    setSubItemEditor(null);
+                  }}
+                >
+                  {subItemEditor.index === null ? "Add sub item" : "Save sub item"}
+                </Button>
               </div>
             </div>
-            <Button
-              kind="ghost"
-              disabled={door.subJobs.length === 1}
-              onClick={() =>
-                set(
-                  "subJobs",
-                  door.subJobs.filter((_, idx) => idx !== i),
-                )
-              }
-            >
-              Remove brand {i + 1}
-            </Button>
           </div>
-        ))}
-        <Button
-          kind="ghost"
-          onClick={() =>
-            set("subJobs", [...door.subJobs, { title: "", groupIds: [] }])
-          }
-        >
-          + Add brand
-        </Button>
+        )}
         <div className="stickyAction">
           <span>{door.subJobs.length} brand sub-job(s)</span>
           <Button disabled={!valid} onClick={onPreview}>
