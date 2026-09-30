@@ -772,6 +772,32 @@ button:disabled {
 .groupPicker small {
   color: var(--muted);
 }
+.instancePickerGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.instancePicker {
+  margin: 16px 0;
+}
+.instancePicker .checkGrid {
+  min-height: 54px;
+  max-height: 180px;
+  background: #fff;
+}
+.instanceEmpty {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+@media (max-width: 800px) {
+  .instancePickerGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
 .brandCard {
   border: 1px solid var(--line);
   border-radius: 12px;
