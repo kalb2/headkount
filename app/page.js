@@ -553,30 +553,58 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             onChange={(e) => set("description", e.target.value)}
           />
         </Field>
-        <Field label="Address (optional)">
+        <Field
+          label="Address (optional)"
+          hint="Use the full street address you want shown on the Connecteam job, for example: 189 The Grove Dr, Los Angeles, CA 90036."
+        >
           <input
             value={door.gps.address}
             onChange={(e) =>
               set("gps", { ...door.gps, address: e.target.value })
             }
+            placeholder="Street address, city, state, ZIP"
           />
         </Field>
+        <div className="addressHelp">
+          <strong>How location works</strong>
+          <span>
+            The job can be created without an address. If you only need a
+            readable location label, the street address is enough.
+          </span>
+          <span>
+            For precise location-based use, enter both latitude and longitude.
+            Headkount will not send only one coordinate.
+          </span>
+        </div>
         <div className="formGrid two">
-          {["latitude", "longitude"].map((key) => (
-            <Field
-              key={key}
-              label={`${key[0].toUpperCase() + key.slice(1)} (optional)`}
-            >
-              <input
-                type="number"
-                step="any"
-                value={door.gps[key]}
-                onChange={(e) =>
-                  set("gps", { ...door.gps, [key]: e.target.value })
-                }
-              />
-            </Field>
-          ))}
+          <Field
+            label="Latitude (optional)"
+            hint="Example: 34.0722. If you enter latitude, longitude is also required."
+          >
+            <input
+              type="number"
+              step="any"
+              value={door.gps.latitude}
+              onChange={(e) =>
+                set("gps", { ...door.gps, latitude: e.target.value })
+              }
+              placeholder="34.0722"
+            />
+          </Field>
+          <Field
+            label="Longitude (optional)"
+            hint="Example: -118.3570. If you enter longitude, latitude is also required."
+          >
+            <input
+              type="number"
+              step="any"
+              value={door.gps.longitude}
+              onChange={(e) =>
+                set("gps", { ...door.gps, longitude: e.target.value })
+              }
+              placeholder="-118.3570"
+            />
+          </Field>
         </div>
         <div className="instancePickerGrid">
           <fieldset className="groupPicker instancePicker">
@@ -625,10 +653,14 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
         <p className="muted">
           Choose the two multi-select user detail fields that define where a
           person can work and which brands they are qualified for. The new door
-          will be added automatically as an option to the Door field.
+          will be added automatically as an option to the Door field. Headkount
+          then creates dynamic Smart Groups that combine Door + Brand eligibility.
         </p>
         <div className="formGrid three qualificationGrid">
-          <Field label="Door eligibility field">
+          <Field
+            label="Door eligibility field"
+            hint="The multi-select user detail that stores which doors/stores each employee can work at. Headkount will add this new job as an option here."
+          >
             <select
               value={door.doorFieldId}
               onChange={(e) => set("doorFieldId", e.target.value)}
@@ -641,7 +673,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               ))}
             </select>
           </Field>
-          <Field label="Brand eligibility field">
+          <Field
+            label="Brand eligibility field"
+            hint="The multi-select user detail that stores which brands each employee is qualified for."
+          >
             <select
               value={door.brandFieldId}
               onChange={(e) => set("brandFieldId", e.target.value)}
@@ -654,7 +689,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               ))}
             </select>
           </Field>
-          <Field label="Smart-group segment">
+          <Field
+            label="Smart-group segment"
+            hint="This is only the Connecteam category/folder where the generated Smart Groups will live. It does not change the qualification logic."
+          >
             <select
               value={door.segmentId}
               onChange={(e) => set("segmentId", e.target.value)}
@@ -667,6 +705,19 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               ))}
             </select>
           </Field>
+        </div>
+        <div className="segmentHelp">
+          <strong>What is a Smart Group segment?</strong>
+          <p>
+            Connecteam requires every Smart Group to belong to a segment. Think
+            of the segment as an organizational category, such as
+            “Locations”, “Departments”, or “Headkount”.
+          </p>
+          <p>
+            The segment does not decide who gets assigned. The Door and Brand
+            user-detail values determine that. This dropdown only controls
+            where the generated groups are organized in Connecteam.
+          </p>
         </div>
         {door.doorFieldId &&
           door.brandFieldId &&
@@ -689,8 +740,9 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
         </div>
         <h3>3. Sub items</h3>
         <p className="muted">
-          Add each brand as a sub item, then choose whether it inherits the
-          parent settings or uses its own qualified smart groups.
+          Add each brand that exists at this door. For every sub item, select
+          the matching Brand value. Headkount will automatically create the
+          Door + Brand Smart Group and assign it to that sub-job.
         </p>
         <div className="subItemsPanel">
           <div className="subItemsToolbar">
