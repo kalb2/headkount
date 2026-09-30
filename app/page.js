@@ -472,14 +472,12 @@ function Metric({ label, value }) {
 function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const set = (key, value) => setDoor((d) => ({ ...d, [key]: value }));
   const groups = snapshot.smartGroups;
-  const instances = [
-    ...snapshot.schedulers
-      .filter((s) => !s.isArchived)
-      .map((s) => ({ id: s.schedulerId, name: s.name, type: "Schedule" })),
-    ...snapshot.timeClocks
-      .filter((t) => !t.isArchived)
-      .map((t) => ({ id: t.id, name: t.name, type: "Time clock" })),
-  ];
+  const schedules = snapshot.schedulers
+    .filter((s) => !s.isArchived)
+    .map((s) => ({ id: s.schedulerId, name: s.name }));
+  const timeClocks = snapshot.timeClocks
+    .filter((t) => !t.isArchived)
+    .map((t) => ({ id: t.id, name: t.name }));
   const update = (i, patch) =>
     set(
       "subJobs",
@@ -572,32 +570,49 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             </Field>
           ))}
         </div>
-        <fieldset className="groupPicker">
-          <legend>Schedules / time clocks</legend>
-          <div className="checkGrid">
-            {instances.map((i) => (
-              <label key={`${i.type}-${i.id}`}>
-                <input
-                  type="checkbox"
-                  checked={door.instanceIds.includes(i.id)}
-                  onChange={() =>
-                    set("instanceIds", toggle(door.instanceIds, i.id))
-                  }
-                />
-                <span>
-                  {i.name}
-                  <small>{i.type}</small>
-                </span>
-              </label>
-            ))}
-          </div>
-          {!instances.length && (
-            <p>
-              No schedules or time clocks loaded. Check scan warnings and
-              refresh.
-            </p>
-          )}
-        </fieldset>
+        <div className="instancePickerGrid">
+          <fieldset className="groupPicker instancePicker">
+            <legend>Use in clocks</legend>
+            <div className="checkGrid">
+              {timeClocks.map((clock) => (
+                <label key={`clock-${clock.id}`}>
+                  <input
+                    type="checkbox"
+                    checked={door.instanceIds.includes(clock.id)}
+                    onChange={() =>
+                      set("instanceIds", toggle(door.instanceIds, clock.id))
+                    }
+                  />
+                  <span>{clock.name}</span>
+                </label>
+              ))}
+              {!timeClocks.length && (
+                <p className="instanceEmpty">No time clocks loaded.</p>
+              )}
+            </div>
+          </fieldset>
+
+          <fieldset className="groupPicker instancePicker">
+            <legend>Use in schedules</legend>
+            <div className="checkGrid">
+              {schedules.map((schedule) => (
+                <label key={`schedule-${schedule.id}`}>
+                  <input
+                    type="checkbox"
+                    checked={door.instanceIds.includes(schedule.id)}
+                    onChange={() =>
+                      set("instanceIds", toggle(door.instanceIds, schedule.id))
+                    }
+                  />
+                  <span>{schedule.name}</span>
+                </label>
+              ))}
+              {!schedules.length && (
+                <p className="instanceEmpty">No schedules loaded.</p>
+              )}
+            </div>
+          </fieldset>
+        </div>
         <h3>2. Parent eligibility</h3>
         <p className="muted">
           Optional if every brand has its own groups. Brands without custom
