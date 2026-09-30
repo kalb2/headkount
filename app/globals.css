@@ -1056,3 +1056,29 @@ fieldset:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.addressHelp,
+.segmentHelp {
+  margin: 10px 0 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.addressHelp {
+  display: grid;
+  gap: 5px;
+}
+.addressHelp strong,
+.segmentHelp strong {
+  color: var(--ink);
+}
+.addressHelp span,
+.segmentHelp p {
+  color: var(--muted);
+}
+.segmentHelp p {
+  margin: 6px 0 0;
+}
