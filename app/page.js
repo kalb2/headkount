@@ -6,7 +6,9 @@ const newDoor = () => ({
   description: "",
   gps: { address: "", latitude: "", longitude: "" },
   instanceIds: [],
-  parentGroupIds: [],
+  doorFieldId: "",
+  brandFieldId: "",
+  segmentId: "",
   subJobs: [],
 });
 const toggle = (values, id) =>
@@ -334,7 +336,7 @@ export default function Home() {
                   setDoor={setDoor}
                   snapshot={snapshot}
                   onCancel={() => setEditor(false)}
-                  onPreview={() => preview("createDoor", door)}
+                  onPreview={() => preview("createQualifiedDoor", door)}
                 />
               ) : managed ? (
                 <ManageDoor
@@ -472,6 +474,18 @@ function Metric({ label, value }) {
 function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const set = (key, value) => setDoor((d) => ({ ...d, [key]: value }));
   const groups = snapshot.smartGroups;
+  const dropdownFields = snapshot.userFields.filter(
+    (field) => field.type === "dropdown" && field.isMultiSelect === true,
+  );
+  const doorField = dropdownFields.find(
+    (field) => Number(field.id) === Number(door.doorFieldId),
+  );
+  const brandField = dropdownFields.find(
+    (field) => Number(field.id) === Number(door.brandFieldId),
+  );
+  const brandOptions = (brandField?.dropdownOptions || []).filter(
+    (option) => !option.isDeleted && !option.isDisabled,
+  );
   const [subItemEditor, setSubItemEditor] = useState(null);
   const [subItemSearch, setSubItemSearch] = useState("");
   const schedules = snapshot.schedulers
@@ -486,15 +500,14 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
       door.subJobs.map((s, index) => (index === i ? { ...s, ...patch } : s)),
     );
   const valid =
-    snapshot.smartGroupsLoaded &&
-    groups.length > 0 &&
     door.title.trim() &&
     door.instanceIds.length &&
+    door.doorFieldId &&
+    door.brandFieldId &&
+    door.segmentId &&
+    Number(door.doorFieldId) !== Number(door.brandFieldId) &&
     door.subJobs.length &&
-    door.subJobs.every(
-      (s) =>
-        s.title.trim() && (s.groupIds.length || door.parentGroupIds.length),
-    );
+    door.subJobs.every((sub) => sub.title.trim() && sub.brandOptionId);
   return (
     <>
       <div className="headingRow">
@@ -509,20 +522,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           Back to doors
         </Button>
       </div>
-      {!snapshot.smartGroupsLoaded || !groups.length ? (
-        <Notice tone="warning">
-          {snapshot.smartGroupsLoaded
-            ? "The account returned no smart groups."
-            : "Smart groups could not be loaded."}{" "}
-          Refresh the account before creating a setup.
-        </Notice>
-      ) : (
-        <Notice>
-          {groups.length} existing smart groups available. Selecting several
-          groups adds those groups; it does not calculate a Door AND Brand
-          intersection.
-        </Notice>
-      )}
+      <Notice>
+        Headkount will create or reuse qualification groups automatically:
+        <strong> Door eligibility + Brand eligibility → Sub-item assignment</strong>.
+      </Notice>
       <div className="panel formPanel">
         <h3>1. Door details</h3>
         <div className="formGrid two">
@@ -615,17 +618,72 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             </div>
           </fieldset>
         </div>
-        <h3>2. Parent eligibility</h3>
+        <h3>2. Qualification setup</h3>
         <p className="muted">
-          Optional if every brand has its own groups. Brands without custom
-          groups inherit these groups, the description, and the location.
+          Choose the two multi-select user detail fields that define where a
+          person can work and which brands they are qualified for. The new door
+          will be added automatically as an option to the Door field.
         </p>
-        <Groups
-          label="Parent smart groups"
-          groups={groups}
-          value={door.parentGroupIds}
-          onChange={(v) => set("parentGroupIds", v)}
-        />
+        <div className="formGrid three qualificationGrid">
+          <Field label="Door eligibility field">
+            <select
+              value={door.doorFieldId}
+              onChange={(e) => set("doorFieldId", e.target.value)}
+            >
+              <option value="">Select user field</option>
+              {dropdownFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Brand eligibility field">
+            <select
+              value={door.brandFieldId}
+              onChange={(e) => set("brandFieldId", e.target.value)}
+            >
+              <option value="">Select user field</option>
+              {dropdownFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Smart-group segment">
+            <select
+              value={door.segmentId}
+              onChange={(e) => set("segmentId", e.target.value)}
+            >
+              <option value="">Select segment</option>
+              {(snapshot.smartGroupSegments || []).map((segment) => (
+                <option key={segment.id} value={segment.id}>
+                  {segment.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        {door.doorFieldId &&
+          door.brandFieldId &&
+          Number(door.doorFieldId) === Number(door.brandFieldId) && (
+            <Notice tone="warning">
+              Door and Brand eligibility need to be two different user fields.
+            </Notice>
+          )}
+        <div className="qualificationPreview">
+          <strong>What happens when this is created</strong>
+          <span>
+            Add “{door.title || "New door"}” to{" "}
+            {doorField?.name || "the Door eligibility field"}
+          </span>
+          <span>Create a dynamic Door-only qualification group</span>
+          <span>
+            Create one Door + Brand qualification group for every sub item
+          </span>
+          <span>Assign each generated group to the matching job/sub-job</span>
+        </div>
         <h3>3. Sub items</h3>
         <p className="muted">
           Add each brand as a sub item, then choose whether it inherits the
@@ -646,8 +704,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 setSubItemEditor({
                   index: null,
                   title: "",
-                  groupIds: [],
-                  inherit: true,
+                  brandOptionId: "",
                 })
               }
             >
@@ -669,8 +726,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                     setSubItemEditor({
                       index,
                       title: item.title,
-                      groupIds: item.groupIds,
-                      inherit: item.groupIds.length === 0,
+                      brandOptionId: item.brandOptionId || "",
                     })
                   }
                 >
@@ -678,9 +734,9 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                   <span>
                     <strong>{item.title}</strong>
                     <small>
-                      {item.groupIds.length
-                        ? `${item.groupIds.length} qualified smart group(s)`
-                        : "Uses parent settings"}
+                      {brandOptions.find(
+                        (option) => Number(option.id) === Number(item.brandOptionId),
+                      )?.value || "Brand qualification not selected"}
                     </small>
                   </span>
                   <span className="subItemChevron">›</span>
@@ -717,21 +773,6 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 </button>
               </div>
 
-              <label className="inheritRow">
-                <input
-                  type="checkbox"
-                  checked={subItemEditor.inherit}
-                  onChange={(e) =>
-                    setSubItemEditor((current) => ({
-                      ...current,
-                      inherit: e.target.checked,
-                      groupIds: e.target.checked ? [] : current.groupIds,
-                    }))
-                  }
-                />
-                <span>Use same settings as parent item</span>
-              </label>
-
               <Field label="Job name">
                 <input
                   maxLength={128}
@@ -746,37 +787,48 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 />
               </Field>
 
-              <div className="subItemInherited">
-                <span>Description</span>
-                <p>
-                  {subItemEditor.inherit
-                    ? door.description || "Uses the parent description"
-                    : door.description || "Copies the parent description at creation"}
-                </p>
-              </div>
+              <Field
+                label="Brand qualification"
+                hint="Users must have this Brand value AND the new Door value to qualify for this sub-job."
+              >
+                <select
+                  value={subItemEditor.brandOptionId}
+                  onChange={(e) =>
+                    setSubItemEditor((current) => ({
+                      ...current,
+                      brandOptionId: e.target.value,
+                    }))
+                  }
+                  disabled={!brandField}
+                >
+                  <option value="">
+                    {brandField
+                      ? "Select brand value"
+                      : "Choose Brand eligibility field first"}
+                  </option>
+                  {brandOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.value}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-              <div className="subItemQualified">
-                <div>
-                  <span>Qualified</span>
+              <div className="subItemInherited">
+                <span>Automatic assignment</span>
+                <p>
+                  Headkount will create/reuse a Smart Group requiring{" "}
+                  <strong>{door.title || "this Door"}</strong> in{" "}
+                  <strong>{doorField?.name || "Door eligibility"}</strong> AND{" "}
                   <strong>
-                    {subItemEditor.inherit
-                      ? "Uses parent qualification"
-                      : `${subItemEditor.groupIds.length} smart group(s) selected`}
-                  </strong>
-                </div>
-                {!subItemEditor.inherit && (
-                  <Groups
-                    label="Groups"
-                    groups={groups}
-                    value={subItemEditor.groupIds}
-                    onChange={(groupIds) =>
-                      setSubItemEditor((current) => ({
-                        ...current,
-                        groupIds,
-                      }))
-                    }
-                  />
-                )}
+                    {brandOptions.find(
+                      (option) =>
+                        Number(option.id) ===
+                        Number(subItemEditor.brandOptionId),
+                    )?.value || "the selected Brand"}
+                  </strong>{" "}
+                  in <strong>{brandField?.name || "Brand eligibility"}</strong>.
+                </p>
               </div>
 
               <div className="modalActions subItemActions">
@@ -803,15 +855,12 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 <Button
                   disabled={
                     !subItemEditor.title.trim() ||
-                    (!subItemEditor.inherit &&
-                      subItemEditor.groupIds.length === 0)
+                    !subItemEditor.brandOptionId
                   }
                   onClick={() => {
                     const nextItem = {
                       title: subItemEditor.title.trim(),
-                      groupIds: subItemEditor.inherit
-                        ? []
-                        : subItemEditor.groupIds,
+                      brandOptionId: Number(subItemEditor.brandOptionId),
                     };
                     if (subItemEditor.index === null)
                       set("subJobs", [...door.subJobs, nextItem]);
