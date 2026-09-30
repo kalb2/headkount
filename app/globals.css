@@ -1022,3 +1022,37 @@ fieldset:disabled {
     display: none;
   }
 }
+
+.formGrid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.qualificationGrid {
+  margin-top: 8px;
+}
+.qualificationPreview {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+  font-size: 13px;
+}
+.qualificationPreview strong {
+  margin-bottom: 2px;
+}
+.qualificationPreview span {
+  color: var(--muted);
+}
+.qualificationPreview span::before {
+  content: "✓";
+  margin-right: 8px;
+  color: var(--green);
+  font-weight: 800;
+}
+@media (max-width: 900px) {
+  .formGrid.three {
+    grid-template-columns: 1fr;
+  }
+}
