@@ -335,16 +335,26 @@ test("expired previews cannot write", async () => {
   );
   assert.equal(m.calls.length, 0);
 });
-test("smart-group loading accepts documented response and rejects malformed success", async () => {
+test("smart-group loading accepts documented and empty response shapes, and preserves malformed payloads", async () => {
   assert.deepEqual(
     await loadSmartGroups("k", async () => ({
       data: { smartGroups: [{ id: "2", name: "MEJ" }] },
     })),
     [{ id: 2, name: "MEJ" }],
   );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({ data: [] })),
+    [],
+  );
+  assert.deepEqual(
+    await loadSmartGroups("k", async () => ({ data: {} })),
+    [],
+  );
   await assert.rejects(
     () => loadSmartGroups("k", async () => ({ data: { groups: [] } })),
-    /smartGroups is missing/,
+    (e) =>
+      /smartGroups is missing/.test(e.message) &&
+      e.payload?.data?.groups?.length === 0,
   );
 });
 test("pagination detects repeated pages and tolerates echoed current offsets", async () => {
