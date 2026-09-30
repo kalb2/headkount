@@ -21,7 +21,7 @@ export async function POST(req) {
         return fallback;
       }
     };
-    const [jobs, smartGroups, schedulers, timeClocks, users, userFields, me] =
+    const [jobs, smartGroups, smartGroupSegments, schedulers, timeClocks, users, userFields, me] =
       await Promise.all([
         collectPages(
           apiKey,
@@ -29,6 +29,14 @@ export async function POST(req) {
           "jobs",
         ),
         optional("Smart groups", () => loadSmartGroups(apiKey), null),
+        optional(
+          "Smart group segments",
+          async () => {
+            const json = await ctFetch(apiKey, "/users/v1/smart-group-segments");
+            return json?.data?.segments || json?.data?.smartGroupSegments || [];
+          },
+          [],
+        ),
         optional(
           "Schedules",
           async () =>
@@ -64,6 +72,7 @@ export async function POST(req) {
       jobs: jobs.rows,
       smartGroups: smartGroups || [],
       smartGroupsLoaded: smartGroups !== null,
+      smartGroupSegments,
       schedulers,
       timeClocks,
       users: users.rows,
