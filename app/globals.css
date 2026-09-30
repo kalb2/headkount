@@ -897,3 +897,128 @@ fieldset:disabled {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.subItemsPanel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.subItemsToolbar {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 280px) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fafbfc;
+}
+.subItemsToolbar strong {
+  white-space: nowrap;
+}
+.subItemsToolbar input {
+  margin: 0;
+}
+.subItemsList {
+  display: grid;
+}
+.subItemRow {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+.subItemRow:last-child {
+  border-bottom: 0;
+}
+.subItemRow:hover {
+  background: #f8fbff;
+}
+.subItemRow strong,
+.subItemRow small {
+  display: block;
+}
+.subItemRow small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+.subItemDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3f73c9;
+}
+.subItemChevron {
+  color: #8b95a7;
+  font-size: 24px;
+  line-height: 1;
+}
+.subItemModal {
+  width: min(620px, 100%);
+}
+.inheritRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.subItemInherited,
+.subItemQualified {
+  margin: 16px 0;
+}
+.subItemInherited > span,
+.subItemQualified > div > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 7px;
+}
+.subItemInherited p {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+  color: var(--muted);
+}
+.subItemQualified > div {
+  padding: 12px;
+  border-radius: 10px;
+  background: #f6f7f9;
+}
+.subItemQualified > div strong {
+  display: block;
+  font-size: 13px;
+}
+.subItemActions {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .subItemsToolbar {
+    grid-template-columns: 1fr;
+  }
+  .subItemsToolbar .btn {
+    width: 100%;
+  }
+  .subItemActions {
+    grid-template-columns: 1fr;
+  }
+  .subItemActions > * {
+    width: 100%;
+  }
+  .subItemActions > span {
+    display: none;
+  }
+}
