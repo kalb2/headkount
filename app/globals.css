@@ -1082,3 +1082,93 @@ fieldset:disabled {
 .segmentHelp p {
   margin: 6px 0 0;
 }
+
+.brandOptionPicker {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.brandOptionToolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 320px) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fafbfc;
+}
+.brandOptionToolbar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.brandOptionToolbar small {
+  color: var(--muted);
+}
+.brandOptionActions {
+  display: flex;
+  gap: 8px;
+}
+.brandOptionActions button {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 8px;
+}
+.brandOptionGrid {
+  max-height: 360px;
+  overflow: auto;
+}
+.brandOptionRow {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf0f4;
+  cursor: pointer;
+}
+.brandOptionRow:last-child {
+  border-bottom: 0;
+}
+.brandOptionRow:hover,
+.brandOptionRow.selected {
+  background: #f7fbff;
+}
+.brandOptionRow strong,
+.brandOptionRow small {
+  display: block;
+}
+.brandOptionRow small {
+  color: var(--muted);
+  margin-top: 3px;
+}
+.selectedBrandsSummary {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+}
+.selectedBrandsSummary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.selectedBrandsSummary span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #21589d;
+  font-size: 12px;
+  font-weight: 700;
+}
+@media (max-width: 760px) {
+  .brandOptionToolbar {
+    grid-template-columns: 1fr;
+  }
+}
