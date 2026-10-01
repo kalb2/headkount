@@ -740,72 +740,6 @@ test("qualified door creation builds Door AND Brand smart groups before creating
         };
       return { data: { users: [structuredClone(state.user)] } };
     }
-    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
-      const body = JSON.parse(opts.body);
-      const value =
-        body[0]?.customFields?.[0]?.value ||
-        [{ id: 10 }];
-      state.user = {
-        ...(state.user || {
-          userId: 1,
-          firstName: "Jane",
-          lastName: "Smith",
-          email: "jane@example.com",
-        }),
-        customFields: [
-          { customFieldId: 100, value },
-          { customFieldId: 200, value: [{ id: 20 }] },
-        ],
-      };
-      return { data: { users: [structuredClone(state.user)] } };
-    }
-    if (path.startsWith("/users/v1/users?")) {
-      if (!state.user)
-        state.user = {
-          userId: 1,
-          firstName: "Jane",
-          lastName: "Smith",
-          email: "jane@example.com",
-          customFields: [
-            { customFieldId: 100, value: [] },
-            { customFieldId: 200, value: [{ id: 20 }] },
-          ],
-        };
-      return { data: { users: [structuredClone(state.user)] } };
-    }
-    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
-      const body = JSON.parse(opts.body);
-      const value =
-        body[0]?.customFields?.[0]?.value ||
-        [{ id: 10 }];
-      state.user = {
-        ...(state.user || {
-          userId: 1,
-          firstName: "Jane",
-          lastName: "Smith",
-          email: "jane@example.com",
-        }),
-        customFields: [
-          { customFieldId: 100, value },
-          { customFieldId: 200, value: [{ id: 20 }] },
-        ],
-      };
-      return { data: { users: [structuredClone(state.user)] } };
-    }
-    if (path.startsWith("/users/v1/users?")) {
-      if (!state.user)
-        state.user = {
-          userId: 1,
-          firstName: "Jane",
-          lastName: "Smith",
-          email: "jane@example.com",
-          customFields: [
-            { customFieldId: 100, value: [] },
-            { customFieldId: 200, value: [{ id: 20 }] },
-          ],
-        };
-      return { data: { users: [structuredClone(state.user)] } };
-    }
     throw new Error(`Unexpected mock request: ${opts.method || "GET"} ${path}`);
   };
 
@@ -975,6 +909,39 @@ test("job verification tolerates omitted blank fields, reordered instance IDs, a
       const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
       return { data: { job: structuredClone(sub) } };
     }
+    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
+      const body = JSON.parse(opts.body);
+      const value =
+        body[0]?.customFields?.[0]?.value ||
+        [{ id: 10 }];
+      state.user = {
+        ...(state.user || {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+        }),
+        customFields: [
+          { customFieldId: 100, value },
+          { customFieldId: 200, value: [{ id: 20 }] },
+        ],
+      };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?")) {
+      if (!state.user)
+        state.user = {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+          customFields: [
+            { customFieldId: 100, value: [] },
+            { customFieldId: 200, value: [{ id: 20 }] },
+          ],
+        };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
     throw new Error(`Unexpected request: ${opts.method || "GET"} ${path}`);
   };
   const plan = await previewOperation("key", "createQualifiedDoor", input, request);
@@ -1072,6 +1039,39 @@ test("qualified door creation repairs existing Headkount smart groups with exact
       }
       const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
       return { data: { job: structuredClone(sub) } };
+    }
+    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
+      const body = JSON.parse(opts.body);
+      const value =
+        body[0]?.customFields?.[0]?.value ||
+        [{ id: 10 }];
+      state.user = {
+        ...(state.user || {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+        }),
+        customFields: [
+          { customFieldId: 100, value },
+          { customFieldId: 200, value: [{ id: 20 }] },
+        ],
+      };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?")) {
+      if (!state.user)
+        state.user = {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+          customFields: [
+            { customFieldId: 100, value: [] },
+            { customFieldId: 200, value: [{ id: 20 }] },
+          ],
+        };
+      return { data: { users: [structuredClone(state.user)] } };
     }
     throw new Error(`Unexpected request: ${opts.method || "GET"} ${path}`);
   };
