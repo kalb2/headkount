@@ -411,9 +411,17 @@ export default function Home() {
 }
 function Doors({ parents, subJobs, onCreate, onManage }) {
   const [search, setSearch] = useState("");
-  const rows = parents.filter((j) =>
-    `${j.title} ${j.code || ""}`.toLowerCase().includes(search.toLowerCase()),
-  );
+  const rows = parents
+    .filter((j) =>
+      `${j.title} ${j.code || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+    )
+    .sort((a, b) =>
+      String(a.title || "").localeCompare(String(b.title || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
   return (
     <>
       <div className="headingRow">
@@ -519,7 +527,12 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     .map((item) => ({ id: item.schedulerId, name: item.name }));
   const timeClocks = snapshot.timeClocks
     .filter((item) => !item.isArchived)
-    .map((item) => ({ id: item.id, name: item.name }));
+    .map((item) => ({ id: item.id, name: item.name }))
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
 
   useEffect(() => {
     setDoor((current) => {
