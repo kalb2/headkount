@@ -238,15 +238,8 @@ export default function Home() {
         <section className="connectCard">
           <div className="brandMark">C</div>
           <span className="badge blue">Operations Manager · V1.3</span>
-          <h1>
-            Every door.
-            <br />
-            The right brands and people.
-          </h1>
-          <p>
-            Create a Job, add its Sub-jobs, and automatically set up employee eligibility,
-            then preview and verify your changes.
-          </p>
+          <h1>Create and manage Connecteam Jobs.</h1>
+          <p>Connect your account to get started.</p>
           <Field
             label="Connecteam API key"
             hint="Kept in this browser session and sent through this app’s server. Disconnect to clear it."
@@ -2129,6 +2122,60 @@ function Preview({ plan, onCancel, onConfirm }) {
   );
 }
 function Results({ report }) {
+  function download() {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "connecteam-operation-results.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (report.complete) {
+    return (
+      <div className="resultBanner success">
+        <span className="resultIcon">✓</span>
+        <div>
+          <strong>Changes saved successfully</strong>
+          <small>Connecteam has been updated and verified.</small>
+        </div>
+        <details>
+          <summary>Details</summary>
+          <ul>
+            {report.results.map((result, index) => (
+              <li key={index}>{result.label || result.jobId || "Updated"}</li>
+            ))}
+          </ul>
+          <button type="button" onClick={download}>
+            Download results
+          </button>
+        </details>
+      </div>
+    );
+  }
+
+  return (
+    <Notice tone="warning">
+      <strong>Some changes need attention.</strong>
+      <details open>
+        <summary>View details</summary>
+        <ul>
+          {report.results.map((result, index) => (
+            <li key={index}>
+              {result.label || result.jobId || "Operation"}
+              {result.error && <pre>{result.error}</pre>}
+            </li>
+          ))}
+        </ul>
+        <Button kind="ghost" onClick={download}>
+          Download results
+        </Button>
+      </details>
+    </Notice>
+  );
+}) {
   function download() {
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
