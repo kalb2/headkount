@@ -1172,3 +1172,52 @@ fieldset:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.diagnosticPanel {
+  margin-bottom: 18px;
+}
+.diagnosticPanel .panelToolbar > div {
+  display: grid;
+  gap: 4px;
+}
+.diagnosticPanel .panelToolbar small {
+  color: var(--muted);
+}
+.diagnosticDiff {
+  background: #fff7e6;
+  font-weight: 700;
+}
+.diagnosticRefs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.diagnosticRefs > div,
+.diagnosticJobs {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.diagnosticRefs code {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.diagnosticJobs {
+  margin-top: 12px;
+}
+.diagnosticJobs pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .diagnosticRefs {
+    grid-template-columns: 1fr;
+  }
+}
