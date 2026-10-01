@@ -371,6 +371,11 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+              <SmartGroupBindingDiagnostic
+                snapshot={snapshot}
+                parents={parents}
+                subJobs={subJobs}
+              />
               <RepairTable
                 snapshot={snapshot}
                 subJobs={subJobs}
@@ -1128,6 +1133,180 @@ function RepairTable({ snapshot, subJobs, preview }) {
     </>
   );
 }
+function SmartGroupBindingDiagnostic({ snapshot, parents, subJobs }) {
+  const [goodGroupName, setGoodGroupName] = useState("Test");
+  const [generatedGroupName, setGeneratedGroupName] = useState(
+    "Door: Door 1 · Brand: Brand 1",
+  );
+  const [jobName, setJobName] = useState("Door 1");
+
+  const groups = snapshot.smartGroups || [];
+  const segments = snapshot.smartGroupSegments || [];
+  const allJobs = [...parents, ...subJobs];
+  const findGroup = (name) =>
+    groups.find(
+      (group) =>
+        String(group.name || "").toLowerCase() ===
+        String(name || "").trim().toLowerCase(),
+    );
+  const good = findGroup(goodGroupName);
+  const generated = findGroup(generatedGroupName);
+  const targetJobs = allJobs.filter(
+    (job) =>
+      String(job.title || "").toLowerCase() ===
+        String(jobName || "").trim().toLowerCase() ||
+      String(job.parentTitle || "").toLowerCase() ===
+        String(jobName || "").trim().toLowerCase(),
+  );
+  const refsFor = (group) => {
+    if (!group) return [];
+    return allJobs.filter((job) =>
+      (job.assign?.groupIds || []).some(
+        (id) => Number(id) === Number(group.id),
+      ),
+    );
+  };
+  const segmentName = (group) =>
+    segments.find(
+      (segment) =>
+        Number(segment.id) === Number(group?.groupSegmentId ?? group?.segmentId),
+    )?.name || "Unknown / not returned";
+  const groupRows = [
+    ["Group ID", good?.id, generated?.id],
+    [
+      "Segment ID",
+      good?.groupSegmentId ?? good?.segmentId,
+      generated?.groupSegmentId ?? generated?.segmentId,
+    ],
+    ["Segment", segmentName(good), segmentName(generated)],
+    [
+      "Automatically created",
+      String(Boolean(good?.isAutomaticallyCreated)),
+      String(Boolean(generated?.isAutomaticallyCreated)),
+    ],
+    ["Users in group", good?.numberOfUsers, generated?.numberOfUsers],
+  ];
+
+  return (
+    <div className="panel diagnosticPanel">
+      <div className="panelToolbar">
+        <div>
+          <strong>Smart Group binding diagnostic</strong>
+          <small>
+            Compare a known-good Connecteam group with a Headkount-created group
+            and see exactly where each group ID is assigned.
+          </small>
+        </div>
+      </div>
+      <div className="formGrid three">
+        <Field label="Known-good Smart Group">
+          <input
+            value={goodGroupName}
+            onChange={(e) => setGoodGroupName(e.target.value)}
+          />
+        </Field>
+        <Field label="Headkount Smart Group">
+          <input
+            value={generatedGroupName}
+            onChange={(e) => setGeneratedGroupName(e.target.value)}
+          />
+        </Field>
+        <Field label="Door / job">
+          <input value={jobName} onChange={(e) => setJobName(e.target.value)} />
+        </Field>
+      </div>
+
+      {(!good || !generated) && (
+        <Notice tone="warning">
+          {!good && <>Could not find Smart Group “{goodGroupName}”. </>}
+          {!generated && <>Could not find Smart Group “{generatedGroupName}”.</>}
+        </Notice>
+      )}
+
+      {good && generated && (
+        <>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Property</th>
+                  <th>{good.name}</th>
+                  <th>{generated.name}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupRows.map(([label, left, right]) => (
+                  <tr key={label}>
+                    <td><strong>{label}</strong></td>
+                    <td>{left ?? "Not returned"}</td>
+                    <td className={String(left ?? "") !== String(right ?? "") ? "diagnosticDiff" : ""}>
+                      {right ?? "Not returned"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="diagnosticRefs">
+            <div>
+              <strong>{good.name} is referenced by</strong>
+              {refsFor(good).length ? (
+                refsFor(good).map((job) => (
+                  <code key={job.jobId}>
+                    {job.parentTitle ? `${job.parentTitle} → ` : ""}
+                    {job.title} · {job.jobId}
+                  </code>
+                ))
+              ) : (
+                <span>No loaded job/sub-job references this group ID.</span>
+              )}
+            </div>
+            <div>
+              <strong>{generated.name} is referenced by</strong>
+              {refsFor(generated).length ? (
+                refsFor(generated).map((job) => (
+                  <code key={job.jobId}>
+                    {job.parentTitle ? `${job.parentTitle} → ` : ""}
+                    {job.title} · {job.jobId}
+                  </code>
+                ))
+              ) : (
+                <span>No loaded job/sub-job references this group ID.</span>
+              )}
+            </div>
+          </div>
+
+          <div className="diagnosticJobs">
+            <strong>Loaded records matching “{jobName}”</strong>
+            {targetJobs.length ? (
+              targetJobs.map((job) => (
+                <pre key={job.jobId}>
+                  {JSON.stringify(
+                    {
+                      title: job.title,
+                      jobId: job.jobId,
+                      parentId: job.parentId || null,
+                      parentTitle: job.parentTitle || null,
+                      useParentData: job.useParentData,
+                      assign: job.assign || null,
+                      instanceIds: job.instanceIds || [],
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              ))
+            ) : (
+              <span>No matching job/sub-job loaded.</span>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Assignments({ snapshot, preview }) {
   const [fieldId, setFieldId] = useState(""),
     [optionId, setOptionId] = useState(""),
