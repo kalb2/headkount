@@ -1345,3 +1345,136 @@ fieldset:disabled {
     flex-direction: column;
   }
 }
+
+.wizardShell {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.wizardProgress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 18px 0;
+}
+.wizardProgressStep {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+}
+.wizardProgressStep > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 12px;
+  font-weight: 800;
+}
+.wizardProgressStep.active {
+  color: var(--blue);
+  border-color: #a9c7ef;
+  background: #f7fbff;
+}
+.wizardProgressStep.done {
+  color: #2d6d45;
+  background: #f6fbf7;
+}
+.wizardCard {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.wizardStepHeader {
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fafbfc;
+}
+.wizardStepHeader > span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.wizardStepHeader h3 {
+  margin: 0 0 5px;
+  font-size: 24px;
+}
+.wizardStepHeader p {
+  margin: 0;
+  color: var(--muted);
+}
+.wizardStepBody {
+  display: grid;
+  gap: 16px;
+  padding: 22px 24px;
+}
+.wizardAdvanced {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+  padding: 0 14px;
+}
+.wizardAdvanced summary {
+  cursor: pointer;
+  padding: 13px 0;
+  font-weight: 800;
+}
+.wizardAdvanced[open] {
+  padding-bottom: 14px;
+}
+.wizardAdvanced p {
+  color: var(--muted);
+}
+.wizardActions {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+  background: #fafbfc;
+}
+.wizardReviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.wizardReviewGrid > div {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+}
+.wizardReviewGrid > div > span,
+.wizardReviewGrid small {
+  color: var(--muted);
+}
+.wizardReviewGrid > div > strong {
+  font-size: 20px;
+}
+@media (max-width: 760px) {
+  .wizardProgress {
+    grid-template-columns: 1fr 1fr;
+  }
+  .wizardReviewGrid {
+    grid-template-columns: 1fr;
+  }
+  .wizardStepHeader,
+  .wizardStepBody,
+  .wizardActions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
