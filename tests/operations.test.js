@@ -707,6 +707,105 @@ test("qualified door creation builds Door AND Brand smart groups before creating
       const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
       return { data: { job: structuredClone(sub) } };
     }
+    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
+      const body = JSON.parse(opts.body);
+      const value =
+        body[0]?.customFields?.[0]?.value ||
+        [{ id: 10 }];
+      state.user = {
+        ...(state.user || {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+        }),
+        customFields: [
+          { customFieldId: 100, value },
+          { customFieldId: 200, value: [{ id: 20 }] },
+        ],
+      };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?")) {
+      if (!state.user)
+        state.user = {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+          customFields: [
+            { customFieldId: 100, value: [] },
+            { customFieldId: 200, value: [{ id: 20 }] },
+          ],
+        };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
+      const body = JSON.parse(opts.body);
+      const value =
+        body[0]?.customFields?.[0]?.value ||
+        [{ id: 10 }];
+      state.user = {
+        ...(state.user || {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+        }),
+        customFields: [
+          { customFieldId: 100, value },
+          { customFieldId: 200, value: [{ id: 20 }] },
+        ],
+      };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?")) {
+      if (!state.user)
+        state.user = {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+          customFields: [
+            { customFieldId: 100, value: [] },
+            { customFieldId: 200, value: [{ id: 20 }] },
+          ],
+        };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?") && opts.method === "PUT") {
+      const body = JSON.parse(opts.body);
+      const value =
+        body[0]?.customFields?.[0]?.value ||
+        [{ id: 10 }];
+      state.user = {
+        ...(state.user || {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+        }),
+        customFields: [
+          { customFieldId: 100, value },
+          { customFieldId: 200, value: [{ id: 20 }] },
+        ],
+      };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
+    if (path.startsWith("/users/v1/users?")) {
+      if (!state.user)
+        state.user = {
+          userId: 1,
+          firstName: "Jane",
+          lastName: "Smith",
+          email: "jane@example.com",
+          customFields: [
+            { customFieldId: 100, value: [] },
+            { customFieldId: 200, value: [{ id: 20 }] },
+          ],
+        };
+      return { data: { users: [structuredClone(state.user)] } };
+    }
     throw new Error(`Unexpected mock request: ${opts.method || "GET"} ${path}`);
   };
 
@@ -720,6 +819,7 @@ test("qualified door creation builds Door AND Brand smart groups before creating
     brandFieldId: 200,
     segmentId: 9,
     subJobs: [{ title: "MEJ", brandOptionId: 20 }],
+    selectedUserIds: [1],
   };
   const plan = await previewOperation("key", "createQualifiedDoor", input, request);
   assert.equal(plan.needsDoorOption, true);
@@ -746,6 +846,11 @@ test("qualified door creation builds Door AND Brand smart groups before creating
   );
   assert.equal(state.job.subJobs.length, 1);
   assert.equal(state.job.subJobs[0].assign.groupIds.length, 1);
+  assert.ok(
+    state.user.customFields
+      .find((field) => field.customFieldId === 100)
+      .value.some((option) => Number(option.id) === 10),
+  );
   assert.ok(
     calls.findIndex((call) => call.path === "/jobs/v1/jobs" && call.method === "POST") >
       calls.findIndex((call) => call.path === "/users/v1/smart-groups" && call.method === "POST"),
@@ -781,6 +886,7 @@ test("job verification tolerates omitted blank fields, reordered instance IDs, a
     brandFieldId: 200,
     segmentId: 9,
     subJobs: [{ title: "MEJ", brandOptionId: 20 }],
+    selectedUserIds: [1],
   };
   const state = {
     doorField: {
@@ -980,6 +1086,7 @@ test("qualified door creation repairs existing Headkount smart groups with exact
     brandFieldId: 200,
     segmentId: 9,
     subJobs: [{ title: "MEJ", brandOptionId: 20 }],
+    selectedUserIds: [1],
   };
 
   const plan = await previewOperation("key", "createQualifiedDoor", input, request);
