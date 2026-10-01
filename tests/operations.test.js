@@ -668,17 +668,42 @@ test("qualified door creation builds Door AND Brand smart groups before creating
       return { data: structuredClone(state.groups[index]) };
     }
     if (path === "/jobs/v1/jobs" && opts.method === "POST") {
-      const body = JSON.parse(opts.body)[0];
+      const body = JSON.parse(opts.body);
+      if (body[0]?.parentId) {
+        const created = body.map((sub, index) => ({
+          ...sub,
+          jobId: `brand-sub-${index}`,
+        }));
+        state.job.subJobs.push(...created);
+        return {
+          data: {
+            jobs: created.map(({ jobId, title }) => ({ jobId, title })),
+          },
+        };
+      }
+      const parent = body[0];
       state.job = {
-        ...body,
+        ...parent,
         jobId: "created",
-        subJobs: body.subJobs.map((sub, index) => ({ ...sub, jobId: `sub-${index}`, parentId: "created" })),
+        subJobs: parent.subJobs.map((sub, index) => ({
+          ...sub,
+          jobId: `sub-${index}`,
+          parentId: "created",
+        })),
       };
       return { data: { jobs: [{ jobId: "created" }] } };
     }
     if (path === "/jobs/v1/jobs/created")
       return { data: { job: structuredClone(state.job) } };
-    if (path.startsWith("/jobs/v1/jobs/sub-")) {
+    if (
+      path.startsWith("/jobs/v1/jobs/sub-") ||
+      path.startsWith("/jobs/v1/jobs/brand-sub-")
+    ) {
+      if (opts.method === "DELETE") {
+        const id = path.split("/").at(-1);
+        state.job.subJobs = state.job.subJobs.filter((item) => item.jobId !== id);
+        return { data: {} };
+      }
       const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
       return { data: { job: structuredClone(sub) } };
     }
@@ -715,6 +740,7 @@ test("qualified door creation builds Door AND Brand smart groups before creating
     ],
   });
   assert.equal(state.job.assign.groupIds.length, 1);
+  assert.equal(state.job.subJobs.length, 1);
   assert.equal(state.job.subJobs[0].assign.groupIds.length, 1);
   assert.ok(
     calls.findIndex((call) => call.path === "/jobs/v1/jobs" && call.method === "POST") >
@@ -800,15 +826,24 @@ test("job verification tolerates omitted blank fields, reordered instance IDs, a
     if (path.startsWith("/jobs/v1/jobs?"))
       return { data: { jobs: [] } };
     if (path === "/jobs/v1/jobs" && opts.method === "POST") {
-      const body = JSON.parse(opts.body)[0];
+      const body = JSON.parse(opts.body);
+      if (body[0]?.parentId) {
+        const created = body.map((sub, index) => ({
+          ...sub,
+          jobId: `verified-brand-${index}`,
+        }));
+        state.job.subJobs.push(...created);
+        return { data: { jobs: created.map(({ jobId, title }) => ({ jobId, title })) } };
+      }
+      const parent = body[0];
       state.job = {
         jobId: "verified-door",
-        title: body.title,
-        color: body.color.toLowerCase(),
-        instanceIds: [...body.instanceIds].reverse(),
-        assign: body.assign,
-        gps: body.gps,
-        subJobs: body.subJobs.map((sub, index) => ({
+        title: parent.title,
+        color: parent.color.toLowerCase(),
+        instanceIds: [...parent.instanceIds].reverse(),
+        assign: parent.assign,
+        gps: parent.gps,
+        subJobs: parent.subJobs.map((sub, index) => ({
           ...sub,
           jobId: `verified-sub-${index}`,
           parentId: "verified-door",
@@ -818,7 +853,15 @@ test("job verification tolerates omitted blank fields, reordered instance IDs, a
     }
     if (path === "/jobs/v1/jobs/verified-door")
       return { data: { job: structuredClone(state.job) } };
-    if (path.startsWith("/jobs/v1/jobs/verified-sub-")) {
+    if (
+      path.startsWith("/jobs/v1/jobs/verified-sub-") ||
+      path.startsWith("/jobs/v1/jobs/verified-brand-")
+    ) {
+      if (opts.method === "DELETE") {
+        const id = path.split("/").at(-1);
+        state.job.subJobs = state.job.subJobs.filter((item) => item.jobId !== id);
+        return { data: {} };
+      }
       const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
       return { data: { job: structuredClone(sub) } };
     }
@@ -885,17 +928,38 @@ test("qualified door creation repairs existing Headkount smart groups with exact
     if (path.startsWith("/jobs/v1/jobs?"))
       return { data: { jobs: [] } };
     if (path === "/jobs/v1/jobs" && opts.method === "POST") {
-      const body = JSON.parse(opts.body)[0];
+      const body = JSON.parse(opts.body);
+      if (body[0]?.parentId) {
+        const created = body.map((sub, index) => ({
+          ...sub,
+          jobId: `repair-brand-${index}`,
+        }));
+        state.job.subJobs.push(...created);
+        return { data: { jobs: created.map(({ jobId, title }) => ({ jobId, title })) } };
+      }
+      const parent = body[0];
       state.job = {
-        ...body,
+        ...parent,
         jobId: "repair-created",
-        subJobs: body.subJobs.map((sub, index) => ({ ...sub, jobId: `repair-sub-${index}`, parentId: "repair-created" })),
+        subJobs: parent.subJobs.map((sub, index) => ({
+          ...sub,
+          jobId: `repair-sub-${index}`,
+          parentId: "repair-created",
+        })),
       };
       return { data: { jobs: [{ jobId: "repair-created" }] } };
     }
     if (path === "/jobs/v1/jobs/repair-created")
       return { data: { job: structuredClone(state.job) } };
-    if (path.startsWith("/jobs/v1/jobs/repair-sub-")) {
+    if (
+      path.startsWith("/jobs/v1/jobs/repair-sub-") ||
+      path.startsWith("/jobs/v1/jobs/repair-brand-")
+    ) {
+      if (opts.method === "DELETE") {
+        const id = path.split("/").at(-1);
+        state.job.subJobs = state.job.subJobs.filter((item) => item.jobId !== id);
+        return { data: {} };
+      }
       const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
       return { data: { job: structuredClone(sub) } };
     }
