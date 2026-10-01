@@ -489,7 +489,6 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const brandOptions = (brandField?.dropdownOptions || []).filter(
     (option) => !option.isDeleted && !option.isDisabled,
   );
-  const [subItemEditor, setSubItemEditor] = useState(null);
   const [subItemSearch, setSubItemSearch] = useState("");
   const schedules = snapshot.schedulers
     .filter((s) => !s.isArchived)
@@ -497,11 +496,6 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const timeClocks = snapshot.timeClocks
     .filter((t) => !t.isArchived)
     .map((t) => ({ id: t.id, name: t.name }));
-  const update = (i, patch) =>
-    set(
-      "subJobs",
-      door.subJobs.map((s, index) => (index === i ? { ...s, ...patch } : s)),
-    );
   const valid =
     door.title.trim() &&
     door.instanceIds.length &&
@@ -679,7 +673,13 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           >
             <select
               value={door.brandFieldId}
-              onChange={(e) => set("brandFieldId", e.target.value)}
+              onChange={(e) =>
+                setDoor((current) => ({
+                  ...current,
+                  brandFieldId: e.target.value,
+                  subJobs: [],
+                }))
+              }
             >
               <option value="">Select user field</option>
               {dropdownFields.map((field) => (
@@ -738,194 +738,130 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           </span>
           <span>Assign each generated group to the matching job/sub-job</span>
         </div>
-        <h3>3. Sub items</h3>
+        <h3>3. Choose brands for this door</h3>
         <p className="muted">
-          Add each brand that exists at this door. For every sub item, select
-          the matching Brand value. Headkount will automatically create the
-          Door + Brand Smart Group and assign it to that sub-job.
+          Headkount pulls these options directly from the selected Brand
+          eligibility user field. Check every brand that exists at this door
+          and Headkount will automatically create a matching sub-job and its
+          Door + Brand qualification group.
         </p>
-        <div className="subItemsPanel">
-          <div className="subItemsToolbar">
-            <strong>Sub items ({door.subJobs.length})</strong>
+
+        <div className="brandOptionPicker">
+          <div className="brandOptionToolbar">
+            <div>
+              <strong>
+                {brandField
+                  ? `${brandField.name} options`
+                  : "Select a Brand eligibility field"}
+              </strong>
+              <small>{door.subJobs.length} selected</small>
+            </div>
             <input
-              aria-label="Search sub items"
-              placeholder="Search"
+              aria-label="Search brand options"
+              placeholder="Search brands"
               value={subItemSearch}
               onChange={(e) => setSubItemSearch(e.target.value)}
+              disabled={!brandField}
             />
-            <Button
-              kind="ghost"
-              onClick={() =>
-                setSubItemEditor({
-                  index: null,
-                  title: "",
-                  brandOptionId: "",
-                })
-              }
-            >
-              + Add sub item
-            </Button>
-          </div>
-          <div className="subItemsList">
-            {door.subJobs
-              .map((item, index) => ({ item, index }))
-              .filter(({ item }) =>
-                item.title.toLowerCase().includes(subItemSearch.toLowerCase()),
-              )
-              .map(({ item, index }) => (
+            {brandField && (
+              <div className="brandOptionActions">
                 <button
                   type="button"
-                  className="subItemRow"
-                  key={index}
                   onClick={() =>
-                    setSubItemEditor({
-                      index,
-                      title: item.title,
-                      brandOptionId: item.brandOptionId || "",
-                    })
+                    set(
+                      "subJobs",
+                      brandOptions.map((option) => ({
+                        title: option.value,
+                        brandOptionId: Number(option.id),
+                      })),
+                    )
                   }
                 >
-                  <span className="subItemDot" />
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>
-                      {brandOptions.find(
-                        (option) => Number(option.id) === Number(item.brandOptionId),
-                      )?.value || "Brand qualification not selected"}
-                    </small>
-                  </span>
-                  <span className="subItemChevron">›</span>
+                  Select all
                 </button>
-              ))}
-            {!door.subJobs.length && (
-              <p className="emptyBuilder">No sub items yet. Add the first brand.</p>
+                <button
+                  type="button"
+                  onClick={() => set("subJobs", [])}
+                >
+                  Clear
+                </button>
+              </div>
             )}
           </div>
+
+          {!brandField ? (
+            <p className="emptyBuilder">
+              Choose the Brand eligibility field above to load its available
+              brand options.
+            </p>
+          ) : (
+            <div className="brandOptionGrid">
+              {brandOptions
+                .filter((option) =>
+                  String(option.value || "")
+                    .toLowerCase()
+                    .includes(subItemSearch.toLowerCase()),
+                )
+                .map((option) => {
+                  const selected = door.subJobs.some(
+                    (sub) =>
+                      Number(sub.brandOptionId) === Number(option.id),
+                  );
+                  return (
+                    <label
+                      className={`brandOptionRow ${selected ? "selected" : ""}`}
+                      key={option.id}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() =>
+                          set(
+                            "subJobs",
+                            selected
+                              ? door.subJobs.filter(
+                                  (sub) =>
+                                    Number(sub.brandOptionId) !==
+                                    Number(option.id),
+                                )
+                              : [
+                                  ...door.subJobs,
+                                  {
+                                    title: option.value,
+                                    brandOptionId: Number(option.id),
+                                  },
+                                ],
+                          )
+                        }
+                      />
+                      <span>
+                        <strong>{option.value}</strong>
+                        <small>
+                          Creates sub-job “{option.value}” and qualifies users
+                          by {door.title || "this Door"} + {option.value}
+                        </small>
+                      </span>
+                    </label>
+                  );
+                })}
+              {!brandOptions.some((option) =>
+                String(option.value || "")
+                  .toLowerCase()
+                  .includes(subItemSearch.toLowerCase()),
+              ) && (
+                <p className="emptyBuilder">No matching brand options.</p>
+              )}
+            </div>
+          )}
         </div>
 
-        {subItemEditor && (
-          <div
-            className="modalBack"
-            role="presentation"
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) setSubItemEditor(null);
-            }}
-          >
-            <div className="modal subItemModal" role="dialog" aria-modal="true">
-              <div className="modalHead">
-                <div>
-                  <p className="eyebrow">
-                    {subItemEditor.index === null ? "Add sub item" : "Edit sub item"}
-                  </p>
-                  <h3>Sub-item settings</h3>
-                </div>
-                <button
-                  className="x"
-                  aria-label="Close sub-item editor"
-                  onClick={() => setSubItemEditor(null)}
-                >
-                  ×
-                </button>
-              </div>
-
-              <Field label="Job name">
-                <input
-                  maxLength={128}
-                  placeholder="MEJ"
-                  value={subItemEditor.title}
-                  onChange={(e) =>
-                    setSubItemEditor((current) => ({
-                      ...current,
-                      title: e.target.value,
-                    }))
-                  }
-                />
-              </Field>
-
-              <Field
-                label="Brand qualification"
-                hint="Users must have this Brand value AND the new Door value to qualify for this sub-job."
-              >
-                <select
-                  value={subItemEditor.brandOptionId}
-                  onChange={(e) =>
-                    setSubItemEditor((current) => ({
-                      ...current,
-                      brandOptionId: e.target.value,
-                    }))
-                  }
-                  disabled={!brandField}
-                >
-                  <option value="">
-                    {brandField
-                      ? "Select brand value"
-                      : "Choose Brand eligibility field first"}
-                  </option>
-                  {brandOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <div className="subItemInherited">
-                <span>Automatic assignment</span>
-                <p>
-                  Headkount will create/reuse a Smart Group requiring{" "}
-                  <strong>{door.title || "this Door"}</strong> in{" "}
-                  <strong>{doorField?.name || "Door eligibility"}</strong> AND{" "}
-                  <strong>
-                    {brandOptions.find(
-                      (option) =>
-                        Number(option.id) ===
-                        Number(subItemEditor.brandOptionId),
-                    )?.value || "the selected Brand"}
-                  </strong>{" "}
-                  in <strong>{brandField?.name || "Brand eligibility"}</strong>.
-                </p>
-              </div>
-
-              <div className="modalActions subItemActions">
-                {subItemEditor.index !== null && (
-                  <Button
-                    kind="ghost"
-                    onClick={() => {
-                      set(
-                        "subJobs",
-                        door.subJobs.filter(
-                          (_, index) => index !== subItemEditor.index,
-                        ),
-                      );
-                      setSubItemEditor(null);
-                    }}
-                  >
-                    Remove sub item
-                  </Button>
-                )}
-                <span />
-                <Button kind="ghost" onClick={() => setSubItemEditor(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  disabled={
-                    !subItemEditor.title.trim() ||
-                    !subItemEditor.brandOptionId
-                  }
-                  onClick={() => {
-                    const nextItem = {
-                      title: subItemEditor.title.trim(),
-                      brandOptionId: Number(subItemEditor.brandOptionId),
-                    };
-                    if (subItemEditor.index === null)
-                      set("subJobs", [...door.subJobs, nextItem]);
-                    else update(subItemEditor.index, nextItem);
-                    setSubItemEditor(null);
-                  }}
-                >
-                  {subItemEditor.index === null ? "Add sub item" : "Save sub item"}
-                </Button>
-              </div>
+        {door.subJobs.length > 0 && (
+          <div className="selectedBrandsSummary">
+            <strong>Sub-jobs to create</strong>
+            <div>
+              {door.subJobs.map((sub) => (
+                <span key={sub.brandOptionId}>{sub.title}</span>
+              ))}
             </div>
           </div>
         )}
