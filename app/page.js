@@ -1185,6 +1185,15 @@ function SmartGroupBindingDiagnostic({ snapshot, parents, subJobs }) {
       String(Boolean(generated?.isAutomaticallyCreated)),
     ],
     ["Users in group", good?.numberOfUsers, generated?.numberOfUsers],
+    [
+      "Admin user IDs",
+      Array.isArray(good?.adminUserIds)
+        ? good.adminUserIds.join(", ") || "[]"
+        : "Not returned",
+      Array.isArray(generated?.adminUserIds)
+        ? generated.adminUserIds.join(", ") || "[]"
+        : "Not returned",
+    ],
   ];
 
   return (
@@ -1246,6 +1255,33 @@ function SmartGroupBindingDiagnostic({ snapshot, parents, subJobs }) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="diagnosticOwnerCheck">
+            <strong>Current account identity</strong>
+            <code>
+              {JSON.stringify(
+                {
+                  id:
+                    snapshot.me?.userId ??
+                    snapshot.me?.id ??
+                    snapshot.me?.ownerId ??
+                    null,
+                  role:
+                    snapshot.me?.role ??
+                    snapshot.me?.userType ??
+                    snapshot.me?.type ??
+                    null,
+                },
+                null,
+                2,
+              )}
+            </code>
+            <small>
+              If Admin user IDs are returned above, the owner/current-user ID
+              should normally be present on groups that are visible in job
+              qualification pickers.
+            </small>
           </div>
 
           <div className="diagnosticRefs">
