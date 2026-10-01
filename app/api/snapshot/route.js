@@ -28,7 +28,28 @@ export async function POST(req) {
           "/jobs/v1/jobs?includeDeleted=false&sort=title&order=asc",
           "jobs",
         ),
-        optional("Smart groups", () => loadSmartGroups(apiKey), null),
+        optional(
+          "Smart groups",
+          async () => {
+            // The SmartGroup response schema includes adminUserIds, but
+            // Connecteam only populates it when this internal read flag is
+            // honored. Use it read-only for diagnostics and fall back to the
+            // standard public list if the flag is rejected or ignored.
+            try {
+              const json = await ctFetch(
+                apiKey,
+                "/users/v1/smart-groups?include_admin_user_ids=true",
+              );
+              const groups =
+                json?.data?.groups ||
+                json?.data?.smartGroups ||
+                (Array.isArray(json?.data) ? json.data : null);
+              if (Array.isArray(groups)) return groups;
+            } catch {}
+            return loadSmartGroups(apiKey);
+          },
+          null,
+        ),
         optional(
           "Smart group segments",
           async () => {
