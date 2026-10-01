@@ -724,6 +724,13 @@ test("qualified door creation builds Door AND Brand smart groups before creating
     ).length,
     2,
   );
+  assert.deepEqual(
+    calls.find(
+      (call) =>
+        call.path === "/users/v1/smart-groups" && call.method === "POST",
+    ).body.filters,
+    { operator: "and" },
+  );
 });
 
 test("job verification tolerates omitted blank fields, reordered instance IDs, and color casing", async () => {
