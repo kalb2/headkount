@@ -1857,8 +1857,36 @@ function Preview({ plan, onCancel, onConfirm }) {
               </tbody>
             </table>
           </div>
+          <div className="creationReview previewEmployeeReview">
+            <strong>Employee assignment</strong>
+            <span>
+              {plan.employeeRecords?.length || 0} employee(s) will receive
+              “{plan.doorName}” in {plan.doorField.name}
+            </span>
+            <span>
+              {(plan.employeeRecords || []).reduce(
+                (total, record) =>
+                  total + (record.matchingBrandOptionIds?.length || 0),
+                0,
+              )}{" "}
+              employee-to-brand qualification(s) will become active
+            </span>
+            {(plan.employeeRecords || []).some(
+              (record) => !record.matchingBrandOptionIds?.length,
+            ) && (
+              <span className="warningText">
+                {
+                  plan.employeeRecords.filter(
+                    (record) => !record.matchingBrandOptionIds?.length,
+                  ).length
+                }{" "}
+                selected employee(s) currently match none of this Door’s brands
+              </span>
+            )}
+          </div>
           <Notice>
-            Users will move into or out of these Smart Groups automatically as
+            Headkount will add the Door value to these employees. Users then
+            move into or out of the generated Smart Groups automatically as
             their Door and Brand user-detail values change.
           </Notice>
         </>
