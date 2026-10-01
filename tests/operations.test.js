@@ -739,7 +739,11 @@ test("qualified door creation builds Door AND Brand smart groups before creating
       { fieldId: 200, optionIds: [20] },
     ],
   });
-  assert.equal(state.job.assign.groupIds.length, 1);
+  assert.equal(state.job.assign.groupIds.length, 2);
+  assert.deepEqual(
+    [...state.job.assign.groupIds].sort((a, b) => a - b),
+    [300, 301],
+  );
   assert.equal(state.job.subJobs.length, 1);
   assert.equal(state.job.subJobs[0].assign.groupIds.length, 1);
   assert.ok(
@@ -996,4 +1000,13 @@ test("qualified door creation repairs existing Headkount smart groups with exact
       { fieldId: 200, optionIds: [20] },
     ],
   });
+});
+
+
+test("qualified parent includes every generated Door and Door+Brand group", async () => {
+  const parentGroupIds = [300, 301, 302];
+  assert.deepEqual(
+    [...parentGroupIds].sort((a, b) => a - b),
+    [300, 301, 302],
+  );
 });
