@@ -1239,3 +1239,109 @@ fieldset:disabled {
 .diagnosticOwnerCheck small {
   color: var(--muted);
 }
+
+.employeeSetupPanel {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.employeeSetupFilters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fafbfc;
+}
+.employeeFilterNote {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+.employeeSelectToolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.employeeSelectToolbar > div {
+  display: flex;
+  gap: 8px;
+}
+.employeeSelectToolbar button {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-weight: 700;
+  cursor: pointer;
+}
+.employeeSetupList {
+  max-height: 430px;
+  overflow: auto;
+}
+.employeeSetupRow {
+  display: grid;
+  grid-template-columns: 20px 34px minmax(180px, 1fr) minmax(220px, 1.1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 11px 16px;
+  border-bottom: 1px solid #edf0f4;
+  cursor: pointer;
+}
+.employeeSetupRow:last-child {
+  border-bottom: 0;
+}
+.employeeSetupRow:hover,
+.employeeSetupRow.selected {
+  background: #f7fbff;
+}
+.employeeSetupIdentity,
+.employeeBrandStatus {
+  display: grid;
+  gap: 3px;
+}
+.employeeSetupIdentity small,
+.employeeBrandStatus small {
+  color: var(--muted);
+}
+.warningText {
+  color: #a45f00;
+  font-weight: 700;
+}
+.creationReview {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+}
+.previewEmployeeReview {
+  margin: 14px 0;
+}
+@media (max-width: 960px) {
+  .employeeSetupFilters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .employeeSetupRow {
+    grid-template-columns: 20px 34px 1fr;
+  }
+  .employeeBrandStatus {
+    grid-column: 3;
+  }
+}
+@media (max-width: 680px) {
+  .employeeSetupFilters {
+    grid-template-columns: 1fr;
+  }
+  .employeeSelectToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
