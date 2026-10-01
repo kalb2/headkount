@@ -313,7 +313,7 @@ export default function Home() {
             <strong>
               {snapshot.me?.company?.name ||
                 snapshot.me?.companyName ||
-                "Door & brand workspace"}
+                "Jobs & Sub-jobs workspace"}
             </strong>
           </div>
           <span className="status">
@@ -419,31 +419,31 @@ function Doors({ parents, subJobs, onCreate, onManage }) {
           <p className="eyebrow">Primary workflow</p>
           <h2>Jobs & sub-jobs</h2>
           <p>
-            One door → brand sub-jobs → existing smart groups → review → save.
+            Create and manage Connecteam Jobs, Sub-jobs, and employee eligibility.
           </p>
         </div>
         <Button onClick={onCreate}>+ Create Job</Button>
       </div>
       <div className="metricGrid">
-        <Metric label="Doors / parent jobs" value={parents.length} />
-        <Metric label="Brand sub-jobs" value={subJobs.length} />
+        <Metric label="Jobs" value={parents.length} />
+        <Metric label="Sub-jobs" value={subJobs.length} />
       </div>
       <div className="panel">
         <div className="panelToolbar">
           <input
             className="search"
-            aria-label="Search doors"
-            placeholder="Search doors or job codes…"
+            aria-label="Search Jobs"
+            placeholder="Search Jobs or Job codes…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <span>{rows.length} doors</span>
+          <span>{rows.length} Jobs</span>
         </div>
         <div className="tableWrap">
           <table>
             <thead>
               <tr>
-                <th>Door / Job</th>
+                <th>Job</th>
                 <th>Brands</th>
                 <th>Manage</th>
               </tr>
@@ -469,13 +469,13 @@ function Doors({ parents, subJobs, onCreate, onManage }) {
           </table>
           {!rows.length && (
             <p className="emptyBuilder">
-              No matching doors. Create your first setup above.
+              No matching Jobs. Create your first Job above.
             </p>
           )}
         </div>
         {rows.length > 500 && (
           <p className="tableNote">
-            Showing 500 results. Search to find any door.
+            Showing 500 results. Search to find any Job.
           </p>
         )}
       </div>
@@ -1200,7 +1200,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
     return (
       <>
         <Notice tone="warning">
-          This door is no longer in the account scan.
+          This Job is no longer in the account scan.
         </Notice>
         <Button onClick={onBack}>Back to Jobs</Button>
       </>
@@ -1225,7 +1225,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
       {subJobs.length > 0 && (
         <div className="panel formPanel">
           <Button kind="ghost" onClick={() => setAdding(!adding)}>
-            {adding ? "Close brand form" : "+ Add brand to this door"}
+            {adding ? "Close Sub-job form" : "+ Add Sub-job"}
           </Button>
           {adding && (
             <>
@@ -1243,7 +1243,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
                 onChange={setGroups}
               />
               <p className="muted">
-                With custom groups, the new brand copies the door’s description
+                With custom groups, the new Sub-job copies the Job’s description
                 and location. With no groups selected, it inherits all parent
                 settings.
               </p>
@@ -1273,7 +1273,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
       ) : (
         <Notice tone="warning">
           This job has no sub-jobs. Connecteam does not allow adding sub-jobs to
-          a job created without them. Create a new door setup with its brands.
+          a Job created without them. Create a new Job with its Sub-jobs.
         </Notice>
       )}
     </>
@@ -1330,7 +1330,7 @@ function RepairTable({ snapshot, subJobs, preview }) {
           <input
             aria-label="Search sub-jobs"
             className="search"
-            placeholder="Search brands or doors…"
+            placeholder="Search Sub-jobs or Jobs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -1364,7 +1364,7 @@ function RepairTable({ snapshot, subJobs, preview }) {
                   />
                 </th>
                 <th>Brand / sub-job</th>
-                <th>Door</th>
+                <th>Job</th>
                 <th>Current assignment</th>
               </tr>
             </thead>
@@ -1679,9 +1679,9 @@ function Assignments({ snapshot, preview }) {
       <div className="headingRow">
         <div>
           <p className="eyebrow">Employee profiles</p>
-          <h2>Employee door assignments</h2>
+          <h2>Employee Job eligibility</h2>
           <p>
-            Update a door dropdown value on employee profiles. This is separate
+            Update a Job eligibility User Detail on employee profiles. This is separate
             from job smart-group eligibility.
           </p>
         </div>
@@ -1704,7 +1704,7 @@ function Assignments({ snapshot, preview }) {
               ))}
             </select>
           </Field>
-          <Field label="Door value">
+          <Field label="Job eligibility value">
             <select
               value={optionId}
               onChange={(e) => setOptionId(e.target.value)}
@@ -1721,7 +1721,7 @@ function Assignments({ snapshot, preview }) {
         <div className="inlineCreate">
           <input
             aria-label="New dropdown value"
-            placeholder="New door dropdown value"
+            placeholder="New Job eligibility value"
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
           />
@@ -1750,7 +1750,7 @@ function Assignments({ snapshot, preview }) {
         </Field>
         {field && !field.isMultiSelect && mode === "add" && (
           <Notice tone="warning">
-            This field allows one value. Applying a new door will replace the
+            This field allows one value. Applying a new Job eligibility value will replace the
             employee’s current value.
           </Notice>
         )}
