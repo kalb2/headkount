@@ -1221,3 +1221,21 @@ fieldset:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.diagnosticOwnerCheck {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.diagnosticOwnerCheck code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diagnosticOwnerCheck small {
+  color: var(--muted);
+}
