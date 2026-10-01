@@ -10,9 +10,20 @@ const newDoor = () => ({
   brandFieldId: "",
   segmentId: "",
   subJobs: [],
+  selectedUserIds: [],
 });
 const toggle = (values, id) =>
   values.includes(id) ? values.filter((x) => x !== id) : [...values, id];
+
+function userFieldOptionIds(user, fieldId) {
+  const value = user.customFields?.find(
+    (field) => Number(field.customFieldId) === Number(fieldId),
+  )?.value;
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => Number(item?.id ?? item))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+}
 function Button({ kind = "primary", children, ...props }) {
   return (
     <button className={`btn ${kind}`} {...props}>
@@ -495,6 +506,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     (option) => !option.isDeleted && !option.isDisabled,
   );
   const [subItemSearch, setSubItemSearch] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeeGroupId, setEmployeeGroupId] = useState("");
+  const [employeeFieldId, setEmployeeFieldId] = useState("");
+  const [employeeOptionId, setEmployeeOptionId] = useState("");
   const schedules = snapshot.schedulers
     .filter((s) => !s.isArchived)
     .map((s) => ({ id: s.schedulerId, name: s.name }));
@@ -509,7 +524,56 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     door.segmentId &&
     Number(door.doorFieldId) !== Number(door.brandFieldId) &&
     door.subJobs.length &&
-    door.subJobs.every((sub) => sub.title.trim() && sub.brandOptionId);
+    door.subJobs.every((sub) => sub.title.trim() && sub.brandOptionId) &&
+    door.selectedUserIds.length > 0;
+  const selectedBrandIds = door.subJobs.map((sub) =>
+    Number(sub.brandOptionId),
+  );
+  const employeeFilterFields = snapshot.userFields.filter(
+    (field) => field.type === "dropdown",
+  );
+  const employeeFilterField = employeeFilterFields.find(
+    (field) => Number(field.id) === Number(employeeFieldId),
+  );
+  const employeeFilterOptions = (
+    employeeFilterField?.dropdownOptions || []
+  ).filter((option) => !option.isDeleted && !option.isDisabled);
+  const supportsSmartGroupMembership = snapshot.users.some(
+    (user) => Array.isArray(user.smartGroupIds),
+  );
+  const visibleEmployees = snapshot.users.filter((user) => {
+    const haystack = `${user.firstName || ""} ${user.lastName || ""} ${user.email || ""}`.toLowerCase();
+    if (!haystack.includes(employeeSearch.toLowerCase())) return false;
+    if (
+      employeeGroupId &&
+      !((user.smartGroupIds || []).map(Number).includes(Number(employeeGroupId)))
+    )
+      return false;
+    if (
+      employeeFieldId &&
+      employeeOptionId &&
+      !userFieldOptionIds(user, employeeFieldId).includes(
+        Number(employeeOptionId),
+      )
+    )
+      return false;
+    return true;
+  });
+  const selectedEmployees = snapshot.users.filter((user) =>
+    door.selectedUserIds.includes(user.userId),
+  );
+  const employeeBrandMatches = (user) => {
+    const ids = userFieldOptionIds(user, door.brandFieldId);
+    return brandOptions.filter(
+      (option) =>
+        selectedBrandIds.includes(Number(option.id)) &&
+        ids.includes(Number(option.id)),
+    );
+  };
+  const selectedWithoutBrand = selectedEmployees.filter(
+    (user) => employeeBrandMatches(user).length === 0,
+  );
+
   return (
     <>
       <div className="headingRow">
@@ -870,8 +934,193 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             </div>
           </div>
         )}
-        <div className="stickyAction">
+        <h3>4. Choose employees for this Door</h3>
+        <p className="muted">
+          Select the people who should be allowed to work at this Door.
+          Headkount will add the new Door value to their employee profiles.
+          Their existing Brand eligibility automatically determines which
+          brand sub-jobs they qualify for.
+        </p>
+
+        <div className="employeeSetupPanel">
+          <div className="employeeSetupFilters">
+            <input
+              aria-label="Search employees"
+              placeholder="Search employees"
+              value={employeeSearch}
+              onChange={(e) => setEmployeeSearch(e.target.value)}
+            />
+            <select
+              value={employeeFieldId}
+              onChange={(e) => {
+                setEmployeeFieldId(e.target.value);
+                setEmployeeOptionId("");
+              }}
+            >
+              <option value="">Filter by user detail</option>
+              {employeeFilterFields.map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={employeeOptionId}
+              onChange={(e) => setEmployeeOptionId(e.target.value)}
+              disabled={!employeeFilterField}
+            >
+              <option value="">
+                {employeeFilterField ? "Any value" : "Choose detail first"}
+              </option>
+              {employeeFilterOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.value}
+                </option>
+              ))}
+            </select>
+            <select
+              value={employeeGroupId}
+              onChange={(e) => setEmployeeGroupId(e.target.value)}
+              disabled={!supportsSmartGroupMembership}
+              title={
+                supportsSmartGroupMembership
+                  ? "Filter employees by existing Smart Group"
+                  : "Connecteam does not return Smart Group membership on user reads in this account"
+              }
+            >
+              <option value="">
+                {supportsSmartGroupMembership
+                  ? "Filter by Smart Group"
+                  : "Smart Group membership unavailable"}
+              </option>
+              {supportsSmartGroupMembership &&
+                groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {!supportsSmartGroupMembership && (
+            <div className="employeeFilterNote">
+              Existing Smart Groups can still be used for job qualification,
+              but Connecteam is not returning per-user Smart Group membership
+              in this account scan. Use user details and search to build the
+              employee list here.
+            </div>
+          )}
+
+          <div className="employeeSelectToolbar">
+            <strong>
+              {door.selectedUserIds.length} employee
+              {door.selectedUserIds.length === 1 ? "" : "s"} selected
+            </strong>
+            <div>
+              <button
+                type="button"
+                onClick={() =>
+                  set(
+                    "selectedUserIds",
+                    Array.from(
+                      new Set([
+                        ...door.selectedUserIds,
+                        ...visibleEmployees.map((user) => user.userId),
+                      ]),
+                    ),
+                  )
+                }
+              >
+                Select shown
+              </button>
+              <button
+                type="button"
+                onClick={() => set("selectedUserIds", [])}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="employeeSetupList">
+            {visibleEmployees.slice(0, 500).map((user) => {
+              const matches = employeeBrandMatches(user);
+              const selected = door.selectedUserIds.includes(user.userId);
+              return (
+                <label
+                  className={`employeeSetupRow ${selected ? "selected" : ""}`}
+                  key={user.userId}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() =>
+                      set(
+                        "selectedUserIds",
+                        toggle(door.selectedUserIds, user.userId),
+                      )
+                    }
+                  />
+                  <span className="avatar">{user.firstName?.[0]}</span>
+                  <span className="employeeSetupIdentity">
+                    <strong>
+                      {user.firstName} {user.lastName}
+                    </strong>
+                    <small>{user.email}</small>
+                  </span>
+                  <span className="employeeBrandStatus">
+                    {matches.length ? (
+                      <>
+                        <small>Qualifies for</small>
+                        <span>
+                          {matches.map((option) => option.value).join(", ")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <small>No selected brand match</small>
+                        <span className="warningText">
+                          Will get Door access but no brand sub-job yet
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+            {!visibleEmployees.length && (
+              <p className="emptyBuilder">No employees match these filters.</p>
+            )}
+          </div>
+        </div>
+
+        {selectedWithoutBrand.length > 0 && (
+          <Notice tone="warning">
+            {selectedWithoutBrand.length} selected employee
+            {selectedWithoutBrand.length === 1 ? "" : "s"} currently match
+            none of the brands selected for this Door. They will receive the
+            Door value, but they will not qualify for a brand sub-job until
+            their Brand eligibility is updated.
+          </Notice>
+        )}
+
+        <div className="creationReview">
+          <strong>Ready to create</strong>
           <span>{door.subJobs.length} brand sub-job(s)</span>
+          <span>{door.selectedUserIds.length} employee(s) assigned to this Door</span>
+          <span>
+            {selectedEmployees.reduce(
+              (total, user) => total + employeeBrandMatches(user).length,
+              0,
+            )}{" "}
+            resulting employee-to-brand qualification(s)
+          </span>
+        </div>
+
+        <div className="stickyAction">
+          <span>
+            {door.subJobs.length} brands · {door.selectedUserIds.length} employees
+          </span>
           <Button disabled={!valid} onClick={onPreview}>
             Preview complete setup
           </Button>
