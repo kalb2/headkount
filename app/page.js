@@ -131,8 +131,7 @@ export default function Home() {
     [error, setError] = useState(""),
     [report, setReport] = useState(null),
     [plan, setPlan] = useState(null),
-    [tab, setTab] = useState("doors"),
-    [editor, setEditor] = useState(false),
+    [tab, setTab] = useState("create"),
     [door, setDoor] = useState(newDoor),
     [managed, setManaged] = useState(null);
   const lock = useRef(false);
@@ -202,8 +201,8 @@ export default function Home() {
         result.complete &&
         ["createDoor", "createQualifiedDoor"].includes(submitted.action)
       ) {
-        setEditor(false);
         setDoor(newDoor());
+        setTab("create");
       }
       try {
         await refresh();
@@ -223,13 +222,12 @@ export default function Home() {
     sessionStorage.removeItem("connecteam_api_key");
     setApiKey("");
     setSnapshot(null);
-    setTab("doors");
+    setTab("create");
     setError("");
     setPlan(null);
     setReport(null);
     setManaged(null);
     setDoor(newDoor());
-    setEditor(false);
   }
   if (!snapshot)
     return (
@@ -280,9 +278,10 @@ export default function Home() {
         <small className="version">V1.3</small>
         <nav>
           {[
-            ["doors", "Jobs & sub-jobs"],
+            ["create", "Create Job"],
+            ["jobs", "Existing Jobs"],
+            ["assign", "Employee eligibility"],
             ["audit", "Audit & Repair"],
-            ["assign", "Employee assignments"],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -316,11 +315,7 @@ export default function Home() {
                 "Jobs & Sub-jobs workspace"}
             </strong>
           </div>
-          <span className="status">
-            {snapshot.smartGroupsLoaded
-              ? `${snapshot.smartGroups.length} smart groups loaded`
-              : "Smart groups unavailable"}
-          </span>
+          <span className="status">Connected</span>
         </header>
         {busy && <Notice>{busy}</Notice>}
         {error && (
@@ -342,17 +337,20 @@ export default function Home() {
         )}
         {report && <Results report={report} />}
         <fieldset className="workspace" disabled={!!busy}>
-          {tab === "doors" && (
+          {tab === "create" && (
             <div className="content">
-              {editor ? (
-                <DoorBuilder
-                  door={door}
-                  setDoor={setDoor}
-                  snapshot={snapshot}
-                  onCancel={() => setEditor(false)}
-                  onPreview={() => preview("createQualifiedDoor", door)}
-                />
-              ) : managed ? (
+              <DoorBuilder
+                door={door}
+                setDoor={setDoor}
+                snapshot={snapshot}
+                onCancel={() => setDoor(newDoor())}
+                onPreview={() => preview("createQualifiedDoor", door)}
+              />
+            </div>
+          )}
+          {tab === "jobs" && (
+            <div className="content">
+              {managed ? (
                 <ManageDoor
                   parent={parents.find((p) => p.jobId === managed)}
                   subJobs={subJobs.filter((s) => s.parentId === managed)}
@@ -364,7 +362,10 @@ export default function Home() {
                 <Doors
                   parents={parents}
                   subJobs={subJobs}
-                  onCreate={() => setEditor(true)}
+                  onCreate={() => {
+                    setDoor(newDoor());
+                    setTab("create");
+                  }}
                   onManage={setManaged}
                 />
               )}
@@ -416,13 +417,13 @@ function Doors({ parents, subJobs, onCreate, onManage }) {
     <>
       <div className="headingRow">
         <div>
-          <p className="eyebrow">Primary workflow</p>
-          <h2>Jobs & sub-jobs</h2>
+          <p className="eyebrow">Existing Jobs</p>
+          <h2>Jobs</h2>
           <p>
-            Create and manage Connecteam Jobs, Sub-jobs, and employee eligibility.
+            View or manage Jobs already in Connecteam.
           </p>
         </div>
-        <Button onClick={onCreate}>+ Create Job</Button>
+        <Button onClick={onCreate}>Create Job</Button>
       </div>
       <div className="metricGrid">
         <Metric label="Jobs" value={parents.length} />
