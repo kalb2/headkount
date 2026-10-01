@@ -1478,3 +1478,114 @@ fieldset:disabled {
     padding-right: 16px;
   }
 }
+
+.wizardPageTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto 8px;
+}
+.wizardPageTitle h2 {
+  margin: 2px 0 0;
+  font-size: 28px;
+}
+.wizardShell {
+  max-width: 900px;
+}
+.wizardProgress {
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+.wizardProgressStep {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px 10px;
+}
+.wizardProgressStep > span {
+  width: 24px;
+  height: 24px;
+}
+.wizardProgressStep.active {
+  background: #f3f7fc;
+  border: 0;
+}
+.wizardProgressStep.done {
+  background: transparent;
+}
+.wizardCard {
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(20, 35, 55, .08);
+}
+.wizardStepHeader {
+  padding: 18px 22px 14px;
+  background: #fff;
+}
+.wizardStepHeader h3 {
+  font-size: 22px;
+}
+.wizardStepBody {
+  padding: 20px 22px 24px;
+  gap: 14px;
+}
+.wizardStepBody .notice {
+  margin: 0;
+}
+.wizardSectionLabel {
+  margin-bottom: -4px;
+}
+.wizardContext {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+.wizardContext span {
+  color: var(--muted);
+}
+.wizardAdvanced {
+  margin-top: 4px;
+  background: #fbfcfd;
+}
+.wizardAdvanced summary {
+  font-size: 13px;
+}
+.wizardActions {
+  padding: 14px 22px;
+}
+.brandOptionPicker,
+.employeeSetupPanel {
+  border-radius: 10px;
+}
+.brandOptionToolbar {
+  padding: 12px 14px;
+}
+.brandOptionRow {
+  min-height: 48px;
+}
+.employeeSetupFilters {
+  padding: 12px 14px;
+}
+.employeeSetupRow {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.wizardReviewGrid > div {
+  padding: 14px;
+}
+@media (max-width: 760px) {
+  .wizardPageTitle {
+    align-items: flex-start;
+  }
+  .wizardProgressStep strong {
+    display: none;
+  }
+  .wizardProgress {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .wizardProgressStep {
+    justify-content: center;
+  }
+}
