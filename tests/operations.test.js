@@ -696,17 +696,13 @@ test("qualified door creation builds Door AND Brand smart groups before creating
   const result = await applyOperation("key", plan, request);
   assert.equal(result.complete, true);
   assert.equal(state.groups.length, 2);
-  assert.deepEqual(state.groups[0].filters, {
-    operator: "and",
-    filters: [{ customFieldId: 100, optionIds: [10] }],
-  });
-  assert.deepEqual(state.groups[1].filters, {
-    operator: "and",
-    filters: [
-      { customFieldId: 100, optionIds: [10] },
-      { customFieldId: 200, optionIds: [20] },
-    ],
-  });
+  assert.deepEqual(state.groups[0].filters, [
+    { customFieldId: 100, optionIds: [10] },
+  ]);
+  assert.deepEqual(state.groups[1].filters, [
+    { customFieldId: 100, optionIds: [10] },
+    { customFieldId: 200, optionIds: [20] },
+  ]);
   assert.equal(state.job.assign.groupIds.length, 1);
   assert.equal(state.job.subJobs[0].assign.groupIds.length, 1);
   assert.ok(
