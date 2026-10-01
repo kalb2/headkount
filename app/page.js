@@ -106,8 +106,8 @@ function flatten(jobs) {
     for (const s of p.subJobs || [])
       if (!s.isDeleted)
         map.set(s.jobId, {
-          ...map.get(s.jobId),
           ...s,
+          ...map.get(s.jobId),
           parentId: p.jobId,
           parentTitle: p.title,
         });
