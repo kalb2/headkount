@@ -671,6 +671,10 @@ test("qualified door creation builds Door AND Brand smart groups before creating
     }
     if (path === "/jobs/v1/jobs/created")
       return { data: { job: structuredClone(state.job) } };
+    if (path.startsWith("/jobs/v1/jobs/sub-")) {
+      const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
+      return { data: { job: structuredClone(sub) } };
+    }
     throw new Error(`Unexpected mock request: ${opts.method || "GET"} ${path}`);
   };
 
@@ -789,6 +793,10 @@ test("job verification tolerates omitted blank fields, reordered instance IDs, a
     }
     if (path === "/jobs/v1/jobs/verified-door")
       return { data: { job: structuredClone(state.job) } };
+    if (path.startsWith("/jobs/v1/jobs/verified-sub-")) {
+      const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
+      return { data: { job: structuredClone(sub) } };
+    }
     throw new Error(`Unexpected request: ${opts.method || "GET"} ${path}`);
   };
   const plan = await previewOperation("key", "createQualifiedDoor", input, request);
