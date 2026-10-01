@@ -619,25 +619,21 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     step === 1 ? stepOneValid : step === 2 ? stepTwoValid : stepThreeValid;
 
   const steps = [
-    ["Job", "Set up the Connecteam Job"],
-    ["Sub-jobs", "Choose the brands at this Job"],
-    ["Employees", "Choose who can work this Job"],
-    ["Review", "Confirm everything before creating"],
+    ["Job", "Enter the Job details"],
+    ["Sub-jobs", "Select the Sub-jobs"],
+    ["Employees", "Select who can work here"],
+    ["Review", "Check and create"],
   ];
 
   return (
     <>
-      <div className="headingRow">
+      <div className="wizardPageTitle">
         <div>
           <p className="eyebrow">Create Job</p>
-          <h2>Set up a new Job and its Sub-jobs</h2>
-          <p>
-            Follow the steps below. Headkount handles Smart Groups and
-            qualification rules automatically.
-          </p>
+          <h2>New Job</h2>
         </div>
         <Button kind="ghost" onClick={onCancel}>
-          Exit setup
+          Start over
         </Button>
       </div>
 
@@ -668,16 +664,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
           {step === 1 && (
             <div className="wizardStepBody">
-              <Notice>
-                In Connecteam, this will be created as a <strong>Job</strong>.
-                If your team calls Jobs “doors” or “stores,” enter that name
-                below.
-              </Notice>
-
               <div className="formGrid two">
                 <Field
                   label="Job name"
-                  hint="Example: Sephora — The Grove. This is the Job name employees and admins will see in Connecteam."
+                  hint="This is the name shown in Connecteam."
                 >
                   <input
                     autoFocus
@@ -702,10 +692,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 />
               </Field>
 
-              <Field
-                label="Job address (optional)"
-                hint="This becomes the Job location in Connecteam."
-              >
+              <Field label="Job address (optional)">
                 <input
                   value={door.gps.address}
                   onChange={(e) =>
@@ -715,9 +702,12 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 />
               </Field>
 
+              <div className="wizardSectionLabel">
+                <strong>Add this Job to</strong>
+              </div>
               <div className="instancePickerGrid">
                 <fieldset className="groupPicker instancePicker">
-                  <legend>Available in Time Clocks</legend>
+                  <legend>Time Clocks</legend>
                   <div className="checkGrid">
                     {timeClocks.map((clock) => (
                       <label key={`clock-${clock.id}`}>
@@ -738,7 +728,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 </fieldset>
 
                 <fieldset className="groupPicker instancePicker">
-                  <legend>Available in Job Schedulers</legend>
+                  <legend>Job Schedulers</legend>
                   <div className="checkGrid">
                     {schedules.map((schedule) => (
                       <label key={`schedule-${schedule.id}`}>
@@ -763,16 +753,11 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               </div>
 
               <details className="wizardAdvanced">
-                <summary>Advanced eligibility settings</summary>
-                <p>
-                  These settings tell Headkount which Connecteam User Details
-                  to use for Job and brand eligibility. They are usually
-                  preselected automatically.
-                </p>
+                <summary>Eligibility settings</summary>
                 <div className="formGrid three">
                   <Field
                     label="Job eligibility User Detail"
-                    hint="The multi-select User Detail that stores which Jobs/locations each employee can work."
+                    
                   >
                     <select
                       value={door.doorFieldId}
@@ -789,7 +774,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
                   <Field
                     label="Brand eligibility User Detail"
-                    hint="The multi-select User Detail that stores which brands each employee can work."
+                    
                   >
                     <select
                       value={door.brandFieldId}
@@ -812,7 +797,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
                   <Field
                     label="Smart Group segment"
-                    hint="Where the generated Smart Groups will be organized in Connecteam."
+                    
                   >
                     <select
                       value={door.segmentId}
@@ -841,20 +826,13 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
           {step === 2 && (
             <div className="wizardStepBody">
-              <Notice>
-                Each selected brand becomes a <strong>Sub-job</strong> under{" "}
-                <strong>{door.title}</strong> in Connecteam.
-              </Notice>
-
               <div className="brandOptionPicker">
                 <div className="brandOptionToolbar">
                   <div>
                     <strong>
-                      {brandField
-                        ? `${brandField.name} options`
-                        : "Brand eligibility User Detail not selected"}
+                      {door.title}
                     </strong>
-                    <small>{door.subJobs.length} Sub-job(s) selected</small>
+                    <small>{door.subJobs.length} selected</small>
                   </div>
                   <input
                     aria-label="Search brands"
@@ -929,10 +907,6 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                           />
                           <span>
                             <strong>{option.value}</strong>
-                            <small>
-                              Creates Sub-job “{option.value}” under{" "}
-                              {door.title}
-                            </small>
                           </span>
                         </label>
                       );
@@ -950,12 +924,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
           {step === 3 && (
             <div className="wizardStepBody">
-              <Notice>
-                Choose the employees who can work <strong>{door.title}</strong>.
-                Headkount updates their Job eligibility User Detail. Their
-                existing Brand eligibility determines which Sub-jobs they can
-                work.
-              </Notice>
+              <div className="wizardContext">
+                <strong>{door.title}</strong>
+                <span>Choose who can work this Job.</span>
+              </div>
 
               <div className="employeeSetupPanel">
                 <div className="employeeSetupFilters">
@@ -1074,7 +1046,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                         <span className="employeeBrandStatus">
                           {matches.length ? (
                             <>
-                              <small>Will qualify for Sub-jobs</small>
+                              <small>Sub-jobs</small>
                               <span>
                                 {matches
                                   .map((option) => option.value)
@@ -1084,10 +1056,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                           ) : (
                             <>
                               <small>No matching Sub-job</small>
-                              <span className="warningText">
-                                Employee can work this Job, but none of the
-                                selected brands
-                              </span>
+                              <span className="warningText">No brand match</span>
                             </>
                           )}
                         </span>
@@ -1105,10 +1074,8 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               {selectedWithoutBrand.length > 0 && (
                 <Notice tone="warning">
                   {selectedWithoutBrand.length} selected employee
-                  {selectedWithoutBrand.length === 1 ? "" : "s"} do not
-                  currently match any selected brand. They can work the Job,
-                  but will not qualify for a Sub-job until their Brand User
-                  Detail is updated.
+                  {selectedWithoutBrand.length === 1 ? "" : "s"} have no
+                  matching Sub-job.
                 </Notice>
               )}
             </div>
@@ -1116,11 +1083,6 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
           {step === 4 && (
             <div className="wizardStepBody">
-              <Notice>
-                Review the setup below. Nothing will be created until you click{" "}
-                <strong>Preview & Create</strong>.
-              </Notice>
-
               <div className="wizardReviewGrid">
                 <div>
                   <span>Job</span>
@@ -1141,28 +1103,22 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                   <small>Will receive Job eligibility for {door.title}</small>
                 </div>
                 <div>
-                  <span>Automatic qualifications</span>
+                  <span>Sub-job assignments</span>
                   <strong>
                     {selectedEmployees.reduce(
                       (total, user) => total + employeeBrandMatches(user).length,
                       0,
                     )}
                   </strong>
-                  <small>
-                    Job + Brand matches that will populate the generated Smart
-                    Groups
-                  </small>
+                  <small>Based on employee Brand eligibility</small>
                 </div>
               </div>
 
               <details className="wizardAdvanced">
-                <summary>What Headkount will create in Connecteam</summary>
+                <summary>Technical details</summary>
                 <p>
-                  Headkount will create/reuse the Job eligibility value, create
-                  the required Smart Groups, create the Job and Sub-jobs,
-                  qualify the parent Job for all generated groups, qualify each
-                  Sub-job for its matching group, and update the selected
-                  employee User Details.
+                  Creates the Job, Sub-jobs, required Smart Groups, and employee
+                  User Detail assignments.
                 </p>
               </details>
             </div>
@@ -1184,7 +1140,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 Continue
               </Button>
             ) : (
-              <Button onClick={onPreview}>Preview & Create</Button>
+              <Button onClick={onPreview}>Create Job</Button>
             )}
           </div>
         </div>
