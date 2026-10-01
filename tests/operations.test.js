@@ -660,6 +660,13 @@ test("qualified door creation builds Door AND Brand smart groups before creating
       state.groups.push(group);
       return { data: group };
     }
+    if (path.startsWith("/users/v1/smart-groups/") && opts.method === "PUT") {
+      const id = Number(path.split("/").at(-1));
+      const body = JSON.parse(opts.body);
+      const index = state.groups.findIndex((group) => group.id === id);
+      state.groups[index] = { ...state.groups[index], ...body };
+      return { data: structuredClone(state.groups[index]) };
+    }
     if (path === "/jobs/v1/jobs" && opts.method === "POST") {
       const body = JSON.parse(opts.body)[0];
       state.job = {
@@ -708,6 +715,14 @@ test("qualified door creation builds Door AND Brand smart groups before creating
   assert.ok(
     calls.findIndex((call) => call.path === "/jobs/v1/jobs" && call.method === "POST") >
       calls.findIndex((call) => call.path === "/users/v1/smart-groups" && call.method === "POST"),
+  );
+  assert.equal(
+    calls.filter(
+      (call) =>
+        call.path.startsWith("/users/v1/smart-groups/") &&
+        call.method === "PUT",
+    ).length,
+    2,
   );
 });
 
