@@ -703,13 +703,17 @@ test("qualified door creation builds Door AND Brand smart groups before creating
   const result = await applyOperation("key", plan, request);
   assert.equal(result.complete, true);
   assert.equal(state.groups.length, 2);
-  assert.deepEqual(state.groups[0].filters, [
-    { customFieldId: 100, optionIds: [10] },
-  ]);
-  assert.deepEqual(state.groups[1].filters, [
-    { customFieldId: 100, optionIds: [10] },
-    { customFieldId: 200, optionIds: [20] },
-  ]);
+  assert.deepEqual(state.groups[0].filters, {
+    operator: "and",
+    dropdownFilters: [{ fieldId: 100, optionIds: [10] }],
+  });
+  assert.deepEqual(state.groups[1].filters, {
+    operator: "and",
+    dropdownFilters: [
+      { fieldId: 100, optionIds: [10] },
+      { fieldId: 200, optionIds: [20] },
+    ],
+  });
   assert.equal(state.job.assign.groupIds.length, 1);
   assert.equal(state.job.subJobs[0].assign.groupIds.length, 1);
   assert.ok(
@@ -722,14 +726,17 @@ test("qualified door creation builds Door AND Brand smart groups before creating
         call.path.startsWith("/users/v1/smart-groups/") &&
         call.method === "PUT",
     ).length,
-    2,
+    0,
   );
   assert.deepEqual(
     calls.find(
       (call) =>
         call.path === "/users/v1/smart-groups" && call.method === "POST",
     ).body.filters,
-    { operator: "and" },
+    {
+      operator: "and",
+      dropdownFilters: [{ fieldId: 100, optionIds: [10] }],
+    },
   );
 });
 
@@ -821,4 +828,108 @@ test("job verification tolerates omitted blank fields, reordered instance IDs, a
   const result = await applyOperation("key", plan, request);
   assert.equal(result.complete, true);
   assert.equal(result.results.at(-1).status, "verified");
+});
+
+test("qualified door creation repairs existing Headkount smart groups with exact filter schema", async () => {
+  const state = {
+    doorField: {
+      id: 100,
+      name: "Doors",
+      type: "dropdown",
+      isMultiSelect: true,
+      dropdownOptions: [{ id: 10, value: "Repair Door", isDeleted: false, isDisabled: false }],
+    },
+    brandField: {
+      id: 200,
+      name: "Brands",
+      type: "dropdown",
+      isMultiSelect: true,
+      dropdownOptions: [{ id: 20, value: "MEJ", isDeleted: false, isDisabled: false }],
+    },
+    groups: [
+      {
+        id: 300,
+        name: "Door: Repair Door",
+        description: "Headkount qualification: Door=Repair Door",
+        groupSegmentId: 9,
+      },
+      {
+        id: 301,
+        name: "Door: Repair Door · Brand: MEJ",
+        description: "Headkount qualification: Door=Repair Door; Brand=MEJ",
+        groupSegmentId: 9,
+      },
+    ],
+    job: null,
+  };
+  const calls = [];
+  const request = async (key, path, opts = {}) => {
+    calls.push({ path, method: opts.method || "GET", body: opts.body ? JSON.parse(opts.body) : null });
+    if (path.startsWith("/users/v1/custom-fields?customFieldTypes=dropdown"))
+      return { data: { customFields: [structuredClone(state.doorField), structuredClone(state.brandField)] } };
+    if (path === "/users/v1/smart-group-segments")
+      return { data: { segments: [{ id: 9, name: "Headkount" }] } };
+    if (path === "/users/v1/smart-groups" && !opts.method)
+      return { data: { groups: structuredClone(state.groups) } };
+    if (path.startsWith("/users/v1/smart-groups/") && opts.method === "PUT") {
+      const id = Number(path.split("/").at(-1));
+      const body = JSON.parse(opts.body);
+      const index = state.groups.findIndex((group) => group.id === id);
+      state.groups[index] = { ...state.groups[index], ...body };
+      return { data: structuredClone(state.groups[index]) };
+    }
+    if (path === "/scheduler/v1/schedulers")
+      return { data: { schedulers: [{ schedulerId: 55, name: "Main", isArchived: false }] } };
+    if (path === "/time-clock/v1/time-clocks")
+      return { data: { timeClocks: [] } };
+    if (path.startsWith("/jobs/v1/jobs?"))
+      return { data: { jobs: [] } };
+    if (path === "/jobs/v1/jobs" && opts.method === "POST") {
+      const body = JSON.parse(opts.body)[0];
+      state.job = {
+        ...body,
+        jobId: "repair-created",
+        subJobs: body.subJobs.map((sub, index) => ({ ...sub, jobId: `repair-sub-${index}`, parentId: "repair-created" })),
+      };
+      return { data: { jobs: [{ jobId: "repair-created" }] } };
+    }
+    if (path === "/jobs/v1/jobs/repair-created")
+      return { data: { job: structuredClone(state.job) } };
+    if (path.startsWith("/jobs/v1/jobs/repair-sub-")) {
+      const sub = state.job.subJobs.find((item) => path.endsWith(item.jobId));
+      return { data: { job: structuredClone(sub) } };
+    }
+    throw new Error(`Unexpected request: ${opts.method || "GET"} ${path}`);
+  };
+
+  const input = {
+    title: "Repair Door",
+    code: "",
+    description: "",
+    gps: { address: "", latitude: "", longitude: "" },
+    instanceIds: [55],
+    doorFieldId: 100,
+    brandFieldId: 200,
+    segmentId: 9,
+    subJobs: [{ title: "MEJ", brandOptionId: 20 }],
+  };
+
+  const plan = await previewOperation("key", "createQualifiedDoor", input, request);
+  const result = await applyOperation("key", plan, request);
+  assert.equal(result.complete, true);
+  assert.equal(
+    calls.filter(
+      (call) =>
+        call.path.startsWith("/users/v1/smart-groups/") &&
+        call.method === "PUT",
+    ).length,
+    2,
+  );
+  assert.deepEqual(state.groups[1].filters, {
+    operator: "and",
+    dropdownFilters: [
+      { fieldId: 100, optionIds: [10] },
+      { fieldId: 200, optionIds: [20] },
+    ],
+  });
 });
