@@ -1645,3 +1645,23 @@ fieldset:disabled {
   cursor: pointer;
   padding: 0;
 }
+
+.coordinateDetails {
+  margin-top: -2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfd;
+  padding: 0 14px;
+}
+.coordinateDetails summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+.coordinateDetails[open] {
+  padding-bottom: 12px;
+}
+.coordinateDetails small {
+  color: var(--muted);
+}
