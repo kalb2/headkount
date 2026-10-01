@@ -133,6 +133,7 @@ export default function Home() {
     [plan, setPlan] = useState(null),
     [tab, setTab] = useState("create"),
     [door, setDoor] = useState(newDoor),
+    [wizardKey, setWizardKey] = useState(0),
     [managed, setManaged] = useState(null);
   const lock = useRef(false);
   useEffect(() => {
@@ -202,6 +203,7 @@ export default function Home() {
         ["createDoor", "createQualifiedDoor"].includes(submitted.action)
       ) {
         setDoor(newDoor());
+        setWizardKey((value) => value + 1);
         setTab("create");
       }
       try {
@@ -228,6 +230,7 @@ export default function Home() {
     setReport(null);
     setManaged(null);
     setDoor(newDoor());
+    setWizardKey((value) => value + 1);
   }
   if (!snapshot)
     return (
@@ -340,10 +343,14 @@ export default function Home() {
           {tab === "create" && (
             <div className="content">
               <DoorBuilder
+                key={wizardKey}
                 door={door}
                 setDoor={setDoor}
                 snapshot={snapshot}
-                onCancel={() => setDoor(newDoor())}
+                onCancel={() => {
+                  setDoor(newDoor());
+                  setWizardKey((value) => value + 1);
+                }}
                 onPreview={() => preview("createQualifiedDoor", door)}
               />
             </div>
@@ -364,6 +371,7 @@ export default function Home() {
                   subJobs={subJobs}
                   onCreate={() => {
                     setDoor(newDoor());
+                    setWizardKey((value) => value + 1);
                     setTab("create");
                   }}
                   onManage={setManaged}
