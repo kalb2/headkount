@@ -716,6 +716,41 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 />
               </Field>
 
+              <details className="coordinateDetails">
+                <summary>Precise coordinates</summary>
+                <div className="formGrid two">
+                  <Field label="Latitude">
+                    <input
+                      type="number"
+                      step="any"
+                      value={door.gps.latitude}
+                      onChange={(e) =>
+                        set("gps", {
+                          ...door.gps,
+                          latitude: e.target.value,
+                        })
+                      }
+                      placeholder="34.0722"
+                    />
+                  </Field>
+                  <Field label="Longitude">
+                    <input
+                      type="number"
+                      step="any"
+                      value={door.gps.longitude}
+                      onChange={(e) =>
+                        set("gps", {
+                          ...door.gps,
+                          longitude: e.target.value,
+                        })
+                      }
+                      placeholder="-118.3570"
+                    />
+                  </Field>
+                </div>
+                <small>Enter both latitude and longitude.</small>
+              </details>
+
               <div className="wizardSectionLabel">
                 <strong>Add this Job to</strong>
               </div>
