@@ -641,36 +641,50 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
       .filter((item) => door.instanceIds.includes(item.id))
       .map((item) => ({ ...item, type: "Job Scheduler" })),
   ];
-  const plannedGroups = door.title.trim()
-    ? [
-        {
-          key: "door",
-          name: `Door: ${door.title.trim()}`,
-          description: `Headkount qualification: Door=${door.title.trim()}`,
-        },
-        ...door.subJobs.map((sub) => ({
-          key: `brand:${sub.title}`,
-          name: `Door: ${door.title.trim()} · Brand: ${sub.title}`,
-          description: `Headkount qualification: Door=${door.title.trim()}; Brand=${sub.title}`,
-          subJob: sub.title,
-        })),
-      ].map((planned) => {
-        const sameName = groups.find(
-          (group) =>
-            String(group.name || "").trim().toLowerCase() ===
-            planned.name.toLowerCase(),
-        );
-        const reusable =
-          sameName &&
-          sameName.description === planned.description &&
-          Number(sameName.groupSegmentId ?? sameName.segmentId) ===
-            Number(door.segmentId);
-        return {
-          ...planned,
-          status: reusable ? "Reuse" : sameName ? "Conflict" : "Create",
-        };
-      })
-    : [];
+  const plannedGroups =
+    door.title.trim() && doorField && brandField
+      ? [
+          {
+            key: "door",
+            name: `${doorField.name}: ${door.title.trim()}`,
+            description: `Headkount qualification: fieldId=${Number(
+              doorField.id,
+            )}; value=${door.title.trim()}`,
+            legacyDescription: `Headkount qualification: Door=${door.title.trim()}`,
+          },
+          ...door.subJobs.map((sub) => ({
+            key: `brand:${sub.title}`,
+            name: `${doorField.name}: ${door.title.trim()} · ${brandField.name}: ${sub.title}`,
+            description: `Headkount qualification: fieldId=${Number(
+              doorField.id,
+            )}; value=${door.title.trim()}; brandFieldId=${Number(
+              brandField.id,
+            )}; brandOptionId=${Number(sub.brandOptionId)}`,
+            legacyDescription: `Headkount qualification: Door=${door.title.trim()}; Brand=${sub.title}`,
+            subJob: sub.title,
+          })),
+        ].map((planned) => {
+          const inSegment = groups.filter(
+            (group) =>
+              Number(group.groupSegmentId ?? group.segmentId) ===
+              Number(door.segmentId),
+          );
+          const reusable = inSegment.find(
+            (group) =>
+              group.description === planned.description ||
+              group.description === planned.legacyDescription,
+          );
+          const sameName = inSegment.find(
+            (group) =>
+              String(group.name || "").trim().toLowerCase() ===
+              planned.name.toLowerCase(),
+          );
+          return {
+            ...planned,
+            status: reusable ? "Reuse" : sameName ? "Conflict" : "Create",
+          };
+        })
+      : [];
   const totalSubJobAssignments = selectedEmployees.reduce(
     (total, user) => total + employeeBrandMatches(user).length,
     0,
