@@ -38,7 +38,7 @@ function singularizeResourceLabel(value) {
   return cleaned;
 }
 
-function detectResourceLabel(snapshot, eligibilityField) {
+function detectResourceLabel(snapshot) {
   const me = snapshot?.me || {};
   const candidates = [
     me.resourceLabel,
@@ -61,8 +61,10 @@ function detectResourceLabel(snapshot, eligibilityField) {
   );
   if (returned) return singularizeResourceLabel(returned) || returned.trim();
 
-  const fromUserDetail = singularizeResourceLabel(eligibilityField?.name);
-  return fromUserDetail || "Job";
+  // Do not infer Connecteam's resource terminology from a User Detail name.
+  // If the account API does not explicitly provide a renamed resource label,
+  // use Connecteam's default public terminology.
+  return "Job";
 }
 
 function pluralizeResourceLabel(value) {
@@ -571,7 +573,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const brandOptions = (brandField?.dropdownOptions || []).filter(
     (option) => !option.isDeleted && !option.isDisabled,
   );
-  const resourceLabel = detectResourceLabel(snapshot, doorField);
+  const resourceLabel = detectResourceLabel(snapshot);
   const resourcesLabel = pluralizeResourceLabel(resourceLabel);
   const subResourceLabel = `Sub-${resourceLabel.toLowerCase()}`;
   const subResourcesLabel = `Sub-${resourcesLabel.toLowerCase()}`;
