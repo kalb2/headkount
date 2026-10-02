@@ -524,7 +524,12 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   );
   const schedules = snapshot.schedulers
     .filter((item) => !item.isArchived)
-    .map((item) => ({ id: item.schedulerId, name: item.name }));
+    .map((item) => ({ id: item.schedulerId, name: item.name }))
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
   const timeClocks = snapshot.timeClocks
     .filter((item) => !item.isArchived)
     .map((item) => ({ id: item.id, name: item.name }))
@@ -618,6 +623,59 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     (user) => employeeBrandMatches(user).length === 0,
   );
 
+  const selectedSegment = (snapshot.smartGroupSegments || []).find(
+    (segment) => Number(segment.id) === Number(door.segmentId),
+  );
+  const existingDoorOption = doorField?.dropdownOptions?.find(
+    (option) =>
+      !option.isDeleted &&
+      !option.isDisabled &&
+      String(option.value || "").trim().toLowerCase() ===
+        String(door.title || "").trim().toLowerCase(),
+  );
+  const selectedInstances = [
+    ...timeClocks
+      .filter((item) => door.instanceIds.includes(item.id))
+      .map((item) => ({ ...item, type: "Time Clock" })),
+    ...schedules
+      .filter((item) => door.instanceIds.includes(item.id))
+      .map((item) => ({ ...item, type: "Job Scheduler" })),
+  ];
+  const plannedGroups = door.title.trim()
+    ? [
+        {
+          key: "door",
+          name: `Door: ${door.title.trim()}`,
+          description: `Headkount qualification: Door=${door.title.trim()}`,
+        },
+        ...door.subJobs.map((sub) => ({
+          key: `brand:${sub.title}`,
+          name: `Door: ${door.title.trim()} · Brand: ${sub.title}`,
+          description: `Headkount qualification: Door=${door.title.trim()}; Brand=${sub.title}`,
+          subJob: sub.title,
+        })),
+      ].map((planned) => {
+        const sameName = groups.find(
+          (group) =>
+            String(group.name || "").trim().toLowerCase() ===
+            planned.name.toLowerCase(),
+        );
+        const reusable =
+          sameName &&
+          sameName.description === planned.description &&
+          Number(sameName.groupSegmentId ?? sameName.segmentId) ===
+            Number(door.segmentId);
+        return {
+          ...planned,
+          status: reusable ? "Reuse" : sameName ? "Conflict" : "Create",
+        };
+      })
+    : [];
+  const totalSubJobAssignments = selectedEmployees.reduce(
+    (total, user) => total + employeeBrandMatches(user).length,
+    0,
+  );
+
   const stepOneValid =
     door.title.trim() &&
     door.instanceIds.length &&
@@ -669,7 +727,8 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           })}
         </div>
 
-        <div className="wizardCard">
+        <div className="wizardWorkspace">
+          <div className="wizardCard">
           <div className="wizardStepHeader">
             <span>Step {step} of 4</span>
             <h3>{steps[step - 1][0]}</h3>
@@ -980,57 +1039,68 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
               <div className="employeeSetupPanel">
                 <div className="employeeSetupFilters">
-                  <input
-                    aria-label="Search employees"
-                    placeholder="Search employees"
-                    value={employeeSearch}
-                    onChange={(e) => setEmployeeSearch(e.target.value)}
-                  />
-                  <select
-                    value={employeeFieldId}
-                    onChange={(e) => {
-                      setEmployeeFieldId(e.target.value);
-                      setEmployeeOptionId("");
-                    }}
-                  >
-                    <option value="">Filter by User Detail</option>
-                    {employeeFilterFields.map((field) => (
-                      <option key={field.id} value={field.id}>
-                        {field.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={employeeOptionId}
-                    onChange={(e) => setEmployeeOptionId(e.target.value)}
-                    disabled={!employeeFilterField}
-                  >
-                    <option value="">
-                      {employeeFilterField ? "Any value" : "Choose User Detail"}
-                    </option>
-                    {employeeFilterOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={employeeGroupId}
-                    onChange={(e) => setEmployeeGroupId(e.target.value)}
-                    disabled={!supportsSmartGroupMembership}
-                  >
-                    <option value="">
-                      {supportsSmartGroupMembership
-                        ? "Filter by Smart Group"
-                        : "Smart Group filter unavailable"}
-                    </option>
-                    {supportsSmartGroupMembership &&
-                      groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
+                  <label className="employeeFilterControl employeeSearchFilter">
+                    <span>Search employees</span>
+                    <input
+                      placeholder="Name or email"
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                    />
+                  </label>
+                  <label className="employeeFilterControl">
+                    <span>User Detail</span>
+                    <select
+                      value={employeeFieldId}
+                      onChange={(e) => {
+                        setEmployeeFieldId(e.target.value);
+                        setEmployeeOptionId("");
+                      }}
+                    >
+                      <option value="">Any User Detail</option>
+                      {employeeFilterFields.map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
                         </option>
                       ))}
-                  </select>
+                    </select>
+                  </label>
+                  <label className="employeeFilterControl">
+                    <span>Value</span>
+                    <select
+                      value={employeeOptionId}
+                      onChange={(e) => setEmployeeOptionId(e.target.value)}
+                      disabled={!employeeFilterField}
+                    >
+                      <option value="">
+                        {employeeFilterField ? "Any value" : "Select User Detail first"}
+                      </option>
+                      {employeeFilterOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="employeeFilterControl">
+                    <span>Smart Group</span>
+                    <select
+                      value={employeeGroupId}
+                      onChange={(e) => setEmployeeGroupId(e.target.value)}
+                      disabled={!supportsSmartGroupMembership}
+                    >
+                      <option value="">
+                        {supportsSmartGroupMembership
+                          ? "Any Smart Group"
+                          : "Membership unavailable"}
+                      </option>
+                      {supportsSmartGroupMembership &&
+                        groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                 </div>
 
                 <div className="employeeSelectToolbar">
@@ -1192,6 +1262,165 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               <Button onClick={onPreview}>Create Job</Button>
             )}
           </div>
+
+          <aside className="connecteamLivePreview">
+            <div className="livePreviewHeader">
+              <div>
+                <span>Live preview</span>
+                <h3>Connecteam changes</h3>
+              </div>
+              <span className="livePreviewStep">Step {step}</span>
+            </div>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>Job</strong>
+                <span className="previewActionBadge create">Create</span>
+              </div>
+              <div className="previewPrimary">
+                {door.title.trim() || "Job name not entered"}
+              </div>
+              {door.code && <small>Code: {door.code}</small>}
+              {door.gps.address && <small>{door.gps.address}</small>}
+              {(door.gps.latitude || door.gps.longitude) && (
+                <small>
+                  Coordinates: {door.gps.latitude || "—"},{" "}
+                  {door.gps.longitude || "—"}
+                </small>
+              )}
+              <div className="previewPills">
+                {selectedInstances.map((instance) => (
+                  <span key={`${instance.type}-${instance.id}`}>
+                    {instance.type}: {instance.name}
+                  </span>
+                ))}
+                {!selectedInstances.length && (
+                  <span className="previewEmptyPill">
+                    No Schedule / Time Clock selected
+                  </span>
+                )}
+              </div>
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>Sub-jobs</strong>
+                <span>{door.subJobs.length}</span>
+              </div>
+              {door.subJobs.length ? (
+                <div className="previewList">
+                  {door.subJobs.map((sub) => (
+                    <div key={sub.brandOptionId}>
+                      <span>{sub.title}</span>
+                      <span className="previewActionBadge create">Create</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="previewEmpty">Select Sub-jobs in Step 2.</div>
+              )}
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>Smart Groups</strong>
+                <span>{plannedGroups.length}</span>
+              </div>
+              {plannedGroups.length ? (
+                <div className="previewList previewGroupList">
+                  {plannedGroups.map((group) => (
+                    <div key={group.key}>
+                      <span title={group.name}>{group.name}</span>
+                      <span
+                        className={`previewActionBadge ${group.status.toLowerCase()}`}
+                      >
+                        {group.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="previewEmpty">
+                  Enter a Job name to preview Smart Groups.
+                </div>
+              )}
+              {selectedSegment && (
+                <small>Segment: {selectedSegment.name}</small>
+              )}
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>User Details</strong>
+              </div>
+              <div className="previewChangeRow">
+                <span>{doorField?.name || "Job eligibility"}</span>
+                <strong>
+                  {door.title.trim()
+                    ? `${existingDoorOption ? "Reuse" : "Add"} “${door.title.trim()}”`
+                    : "Waiting for Job name"}
+                </strong>
+              </div>
+              <div className="previewChangeRow">
+                <span>Employees updated</span>
+                <strong>{door.selectedUserIds.length}</strong>
+              </div>
+              <div className="previewChangeRow">
+                <span>Sub-job qualifications</span>
+                <strong>{totalSubJobAssignments}</strong>
+              </div>
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>Qualification assignments</strong>
+              </div>
+              {plannedGroups.length ? (
+                <>
+                  <div className="previewQualification">
+                    <small>Parent Job</small>
+                    <strong>
+                      {plannedGroups.map((group) => group.name).join(" + ")}
+                    </strong>
+                  </div>
+                  {door.subJobs.map((sub) => {
+                    const group = plannedGroups.find(
+                      (candidate) => candidate.subJob === sub.title,
+                    );
+                    return (
+                      <div className="previewQualification" key={sub.brandOptionId}>
+                        <small>{sub.title}</small>
+                        <strong>{group?.name || "Pending"}</strong>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div className="previewEmpty">
+                  Qualification assignments appear as you build the Job.
+                </div>
+              )}
+            </section>
+
+            {door.selectedUserIds.length > 0 && (
+              <section className="previewSection">
+                <div className="previewSectionTitle">
+                  <strong>Selected employees</strong>
+                  <span>{door.selectedUserIds.length}</span>
+                </div>
+                <div className="previewEmployeeNames">
+                  {selectedEmployees.slice(0, 6).map((user) => (
+                    <span key={user.userId}>
+                      {user.firstName} {user.lastName}
+                    </span>
+                  ))}
+                  {selectedEmployees.length > 6 && (
+                    <span>+{selectedEmployees.length - 6} more</span>
+                  )}
+                </div>
+              </section>
+            )}
+          </aside>
         </div>
       </div>
     </>
