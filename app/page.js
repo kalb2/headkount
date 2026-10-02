@@ -2223,41 +2223,4 @@ function Results({ report }) {
       </details>
     </Notice>
   );
-}) {
-  function download() {
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "connecteam-operation-results.json";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-  return (
-    <Notice tone={report.complete ? "success" : "warning"}>
-      <strong>
-        {report.complete
-          ? "Operation completed."
-          : "Operation needs attention. Inspect the results before retrying."}
-      </strong>
-      <ul>
-        {report.results.map((r, i) => (
-          <li key={i}>
-            {r.label || r.jobId || "Operation"}: <strong>{r.status}</strong>
-            {r.error && <pre>{r.error}</pre>}
-            {r.details && (
-              <details>
-                <summary>Connecteam error details</summary>
-                <pre>{JSON.stringify(r.details, null, 2)}</pre>
-              </details>
-            )}
-          </li>
-        ))}
-      </ul>
-      <Button kind="ghost" onClick={download}>
-        Download results
-      </Button>
-    </Notice>
-  );
 }
