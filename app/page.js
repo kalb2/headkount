@@ -931,7 +931,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 <summary>Eligibility settings</summary>
                 <div className="formGrid three">
                   <Field
-                    label="Job eligibility User Detail"
+                    label={`${resourceLabel} eligibility User Detail`}
                     
                   >
                     <select
@@ -991,7 +991,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                   door.brandFieldId &&
                   Number(door.doorFieldId) === Number(door.brandFieldId) && (
                     <Notice tone="warning">
-                      Job eligibility and Brand eligibility must use two
+                      {resourceLabel} eligibility and Brand eligibility must use two
                       different User Details.
                     </Notice>
                   )}
@@ -1232,7 +1232,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                         <span className="employeeBrandStatus">
                           {matches.length ? (
                             <>
-                              <small>Sub-jobs</small>
+                              <small>{subResourcesLabel}</small>
                               <span>
                                 {matches
                                   .map((option) => option.value)
@@ -1241,7 +1241,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                             </>
                           ) : (
                             <>
-                              <small>No matching Sub-job</small>
+                              <small>No matching {subResourceLabel}</small>
                               <span className="warningText">No brand match</span>
                             </>
                           )}
