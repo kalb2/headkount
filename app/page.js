@@ -1262,6 +1262,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               <Button onClick={onPreview}>Create Job</Button>
             )}
           </div>
+        </div>
 
           <aside className="connecteamLivePreview">
             <div className="livePreviewHeader">
