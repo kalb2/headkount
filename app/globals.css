@@ -1905,3 +1905,303 @@ fieldset:disabled {
     grid-column: auto;
   }
 }
+
+/* Final full-width review */
+.wizardWorkspace.reviewMode {
+  grid-template-columns: 1fr;
+}
+
+.wizardWorkspace.reviewMode .wizardCard {
+  width: 100%;
+}
+
+.finalReviewPage {
+  padding-top: 18px;
+}
+
+.finalReviewHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid #cfd9e6;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.finalReviewHero > div {
+  display: grid;
+  gap: 4px;
+}
+
+.finalReviewHero > div > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.finalReviewHero h3 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.finalReviewHero p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.reviewReadyBadge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e8f5ec;
+  color: #2d6d45;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.finalReviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.finalReviewSection {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.finalReviewWide {
+  grid-column: 1 / -1;
+}
+
+.finalReviewSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fafbfc;
+}
+
+.finalReviewSectionHead > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.finalReviewSectionHead > div > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #eef4fb;
+  color: #245fa8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.finalReviewSectionHead b {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reviewDefinitionList {
+  margin: 0;
+  padding: 6px 16px 12px;
+}
+
+.reviewDefinitionList > div {
+  display: grid;
+  grid-template-columns: minmax(130px, .45fr) minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.reviewDefinitionList > div:last-child {
+  border-bottom: 0;
+}
+
+.reviewDefinitionList dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reviewDefinitionList dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.reviewSimpleList,
+.reviewEmployeeList {
+  display: grid;
+}
+
+.reviewSimpleList > div,
+.reviewEmployeeList > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 16px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.reviewSimpleList > div:last-child,
+.reviewEmployeeList > div:last-child {
+  border-bottom: 0;
+}
+
+.reviewSimpleList > div > span {
+  color: #2d6d45;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reviewEmployeeList {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.reviewEmployeeList > div > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.reviewEmployeeList small {
+  color: var(--muted);
+}
+
+.reviewEmployeeList > div > span:last-child {
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.reviewSmartGroupTable {
+  display: grid;
+}
+
+.reviewTableHead,
+.reviewTableRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(180px, .8fr) 90px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+}
+
+.reviewTableHead {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.reviewTableRow {
+  border-bottom: 1px solid #eef1f5;
+}
+
+.reviewTableRow:last-child {
+  border-bottom: 0;
+}
+
+.reviewTableRow strong,
+.reviewTableRow span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reviewFootnote {
+  display: block;
+  padding: 10px 16px 14px;
+  color: var(--muted);
+}
+
+.reviewPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reviewPills > span {
+  display: inline-grid;
+  gap: 1px;
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.reviewPills > span small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.reviewQualificationTree {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.reviewQualificationTree > div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #e6ebf1;
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+
+.reviewQualificationTree > div > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+@media (max-width: 900px) {
+  .finalReviewGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .finalReviewWide {
+    grid-column: auto;
+  }
+
+  .reviewTableHead,
+  .reviewTableRow {
+    grid-template-columns: 1fr;
+  }
+
+  .reviewTableHead {
+    display: none;
+  }
+
+  .reviewEmployeeList > div,
+  .reviewSimpleList > div,
+  .reviewDefinitionList > div {
+    grid-template-columns: 1fr;
+  }
+
+  .reviewEmployeeList > div > span:last-child {
+    max-width: none;
+    text-align: left;
+  }
+}
