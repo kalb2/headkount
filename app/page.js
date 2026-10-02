@@ -24,6 +24,55 @@ function userFieldOptionIds(user, fieldId) {
     .map((item) => Number(item?.id ?? item))
     .filter((id) => Number.isSafeInteger(id) && id > 0);
 }
+function singularizeResourceLabel(value) {
+  const cleaned = String(value || "")
+    .replace(/\b(eligibility|eligible|access|assignment|assignments)\b/gi, "")
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  if (/ies$/i.test(cleaned)) return cleaned.replace(/ies$/i, "y");
+  if (/sses$/i.test(cleaned)) return cleaned.replace(/es$/i, "");
+  if (/s$/i.test(cleaned) && !/ss$/i.test(cleaned))
+    return cleaned.replace(/s$/i, "");
+  return cleaned;
+}
+
+function detectResourceLabel(snapshot, eligibilityField) {
+  const me = snapshot?.me || {};
+  const candidates = [
+    me.resourceLabel,
+    me.resourceName,
+    me.resourcesLabel,
+    me.resourcesName,
+    me.jobLabel,
+    me.jobName,
+    me.jobsLabel,
+    me.jobsName,
+    me.settings?.resourceLabel,
+    me.settings?.resourceName,
+    me.settings?.jobsLabel,
+    me.settings?.jobsName,
+    me.company?.resourceLabel,
+    me.company?.resourceName,
+  ];
+  const returned = candidates.find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  if (returned) return singularizeResourceLabel(returned) || returned.trim();
+
+  const fromUserDetail = singularizeResourceLabel(eligibilityField?.name);
+  return fromUserDetail || "Job";
+}
+
+function pluralizeResourceLabel(value) {
+  const label = String(value || "Job").trim();
+  if (/y$/i.test(label) && !/[aeiou]y$/i.test(label))
+    return label.replace(/y$/i, "ies");
+  if (/s$/i.test(label)) return label;
+  return `${label}s`;
+}
+
 function Button({ kind = "primary", children, ...props }) {
   return (
     <button className={`btn ${kind}`} {...props}>
@@ -522,6 +571,10 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
   const brandOptions = (brandField?.dropdownOptions || []).filter(
     (option) => !option.isDeleted && !option.isDisabled,
   );
+  const resourceLabel = detectResourceLabel(snapshot, doorField);
+  const resourcesLabel = pluralizeResourceLabel(resourceLabel);
+  const subResourceLabel = `Sub-${resourceLabel.toLowerCase()}`;
+  const subResourcesLabel = `Sub-${resourcesLabel.toLowerCase()}`;
   const schedules = snapshot.schedulers
     .filter((item) => !item.isArchived)
     .map((item) => ({ id: item.schedulerId, name: item.name }))
@@ -705,9 +758,9 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     step === 1 ? stepOneValid : step === 2 ? stepTwoValid : stepThreeValid;
 
   const steps = [
-    ["Job", "Enter the Job details"],
-    ["Sub-jobs", "Select the Sub-jobs"],
-    ["Employees", "Select who can work here"],
+    [resourceLabel, `Enter the ${resourceLabel} details`],
+    [subResourcesLabel, `Select the ${subResourcesLabel}`],
+    ["Employees", `Select who can work this ${resourceLabel}`],
     ["Review", "Check and create"],
   ];
 
@@ -715,8 +768,8 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
     <>
       <div className="wizardPageTitle">
         <div>
-          <p className="eyebrow">Create Job</p>
-          <h2>New Job</h2>
+          <p className="eyebrow">Create {resourceLabel}</p>
+          <h2>New {resourceLabel}</h2>
         </div>
         <Button kind="ghost" onClick={onCancel}>
           Start over
@@ -741,7 +794,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           })}
         </div>
 
-        <div className="wizardWorkspace">
+        <div className={`wizardWorkspace ${step === 4 ? "reviewMode" : ""}`}>
           <div className="wizardCard">
           <div className="wizardStepHeader">
             <span>Step {step} of 4</span>
@@ -753,7 +806,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             <div className="wizardStepBody">
               <div className="formGrid two">
                 <Field
-                  label="Job name"
+                  label={`${resourceLabel} name`}
                   hint="This is the name shown in Connecteam."
                 >
                   <input
@@ -764,7 +817,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                     placeholder="Sephora — The Grove"
                   />
                 </Field>
-                <Field label="Job code (optional)">
+                <Field label={`${resourceLabel} code (optional)`}>
                   <input
                     value={door.code}
                     onChange={(e) => set("code", e.target.value)}
@@ -772,14 +825,14 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 </Field>
               </div>
 
-              <Field label="Job description (optional)">
+              <Field label={`${resourceLabel} description (optional)`}>
                 <textarea
                   value={door.description}
                   onChange={(e) => set("description", e.target.value)}
                 />
               </Field>
 
-              <Field label="Job address (optional)">
+              <Field label={`${resourceLabel} address (optional)`}>
                 <input
                   value={door.gps.address}
                   onChange={(e) =>
@@ -825,7 +878,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               </details>
 
               <div className="wizardSectionLabel">
-                <strong>Add this Job to</strong>
+                <strong>Add this {resourceLabel} to</strong>
               </div>
               <div className="instancePickerGrid">
                 <fieldset className="groupPicker instancePicker">
@@ -1048,7 +1101,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
             <div className="wizardStepBody">
               <div className="wizardContext">
                 <strong>{door.title}</strong>
-                <span>Choose who can work this Job.</span>
+                <span>Choose who can work this {resourceLabel}.</span>
               </div>
 
               <div className="employeeSetupPanel">
@@ -1215,45 +1268,213 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
           )}
 
           {step === 4 && (
-            <div className="wizardStepBody">
-              <div className="wizardReviewGrid">
+            <div className="wizardStepBody finalReviewPage">
+              <div className="finalReviewHero">
                 <div>
-                  <span>Job</span>
-                  <strong>{door.title}</strong>
-                  <small>
-                    {door.gps.address || "No address"} ·{" "}
-                    {door.instanceIds.length} Schedule/Time Clock assignment(s)
-                  </small>
+                  <span>Ready to create</span>
+                  <h3>{door.title}</h3>
+                  <p>
+                    {door.subJobs.length} {subResourcesLabel} ·{" "}
+                    {door.selectedUserIds.length} employees ·{" "}
+                    {plannedGroups.length} Smart Groups
+                  </p>
                 </div>
-                <div>
-                  <span>Sub-jobs</span>
-                  <strong>{door.subJobs.length}</strong>
-                  <small>{door.subJobs.map((sub) => sub.title).join(", ")}</small>
-                </div>
-                <div>
-                  <span>Employees</span>
-                  <strong>{door.selectedUserIds.length}</strong>
-                  <small>Will receive Job eligibility for {door.title}</small>
-                </div>
-                <div>
-                  <span>Sub-job assignments</span>
-                  <strong>
-                    {selectedEmployees.reduce(
-                      (total, user) => total + employeeBrandMatches(user).length,
-                      0,
-                    )}
-                  </strong>
-                  <small>Based on employee Brand eligibility</small>
-                </div>
+                <span className="reviewReadyBadge">Ready</span>
               </div>
 
-              <details className="wizardAdvanced">
-                <summary>Technical details</summary>
-                <p>
-                  Creates the Job, Sub-jobs, required Smart Groups, and employee
-                  User Detail assignments.
-                </p>
-              </details>
+              <div className="finalReviewGrid">
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>1</span>
+                      <strong>{resourceLabel}</strong>
+                    </div>
+                  </div>
+                  <dl className="reviewDefinitionList">
+                    <div>
+                      <dt>{resourceLabel} name</dt>
+                      <dd>{door.title}</dd>
+                    </div>
+                    {door.code && (
+                      <div>
+                        <dt>{resourceLabel} code</dt>
+                        <dd>{door.code}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>Address</dt>
+                      <dd>{door.gps.address || "Not set"}</dd>
+                    </div>
+                    {(door.gps.latitude || door.gps.longitude) && (
+                      <div>
+                        <dt>Coordinates</dt>
+                        <dd>
+                          {door.gps.latitude || "—"}, {door.gps.longitude || "—"}
+                        </dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>Used in</dt>
+                      <dd>
+                        <div className="reviewPills">
+                          {selectedInstances.map((instance) => (
+                            <span key={`${instance.type}-${instance.id}`}>
+                              {instance.name}
+                              <small>{instance.type}</small>
+                            </span>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>2</span>
+                      <strong>{subResourcesLabel}</strong>
+                    </div>
+                    <b>{door.subJobs.length}</b>
+                  </div>
+                  <div className="reviewSimpleList">
+                    {door.subJobs.map((sub) => (
+                      <div key={sub.brandOptionId}>
+                        <strong>{sub.title}</strong>
+                        <span>Create</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="finalReviewSection finalReviewWide">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>3</span>
+                      <strong>Smart Groups</strong>
+                    </div>
+                    <b>{plannedGroups.length}</b>
+                  </div>
+                  <div className="reviewSmartGroupTable">
+                    <div className="reviewTableHead">
+                      <span>Smart Group</span>
+                      <span>Used for</span>
+                      <span>Action</span>
+                    </div>
+                    {plannedGroups.map((group) => (
+                      <div className="reviewTableRow" key={group.key}>
+                        <strong>{group.name}</strong>
+                        <span>
+                          {group.subJob
+                            ? `${subResourceLabel}: ${group.subJob}`
+                            : `Parent ${resourceLabel}`}
+                        </span>
+                        <span
+                          className={`previewActionBadge ${group.status.toLowerCase()}`}
+                        >
+                          {group.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedSegment && (
+                    <small className="reviewFootnote">
+                      Smart Group segment: {selectedSegment.name}
+                    </small>
+                  )}
+                </section>
+
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>4</span>
+                      <strong>User Detail updates</strong>
+                    </div>
+                  </div>
+                  <dl className="reviewDefinitionList">
+                    <div>
+                      <dt>{doorField?.name || "Eligibility"}</dt>
+                      <dd>
+                        {door.title.trim()
+                          ? `${existingDoorOption ? "Reuse" : "Add"} “${door.title.trim()}”`
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Employees updated</dt>
+                      <dd>{door.selectedUserIds.length}</dd>
+                    </div>
+                    <div>
+                      <dt>{brandField?.name || "Brand eligibility"}</dt>
+                      <dd>No values changed</dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>5</span>
+                      <strong>Employees</strong>
+                    </div>
+                    <b>{door.selectedUserIds.length}</b>
+                  </div>
+                  <div className="reviewEmployeeList">
+                    {selectedEmployees.map((user) => {
+                      const matches = employeeBrandMatches(user);
+                      return (
+                        <div key={user.userId}>
+                          <span>
+                            <strong>
+                              {user.firstName} {user.lastName}
+                            </strong>
+                            <small>{user.email}</small>
+                          </span>
+                          <span>
+                            {matches.length
+                              ? matches.map((option) => option.value).join(", ")
+                              : `No matching ${subResourceLabel}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="finalReviewSection finalReviewWide">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>6</span>
+                      <strong>Qualification assignments</strong>
+                    </div>
+                  </div>
+                  <div className="reviewQualificationTree">
+                    <div>
+                      <span>Parent {resourceLabel}</span>
+                      <strong>{door.title}</strong>
+                      <div className="reviewPills">
+                        {plannedGroups.map((group) => (
+                          <span key={group.key}>{group.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                    {door.subJobs.map((sub) => {
+                      const group = plannedGroups.find(
+                        (candidate) => candidate.subJob === sub.title,
+                      );
+                      return (
+                        <div key={sub.brandOptionId}>
+                          <span>{subResourceLabel}</span>
+                          <strong>{sub.title}</strong>
+                          <div className="reviewPills">
+                            <span>{group?.name || "Pending"}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
             </div>
           )}
 
@@ -1273,12 +1494,12 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 Continue
               </Button>
             ) : (
-              <Button onClick={onPreview}>Create Job</Button>
+              <Button onClick={onPreview}>Create {resourceLabel}</Button>
             )}
           </div>
         </div>
 
-          <aside className="connecteamLivePreview">
+          {step !== 4 && <aside className="connecteamLivePreview">
             <div className="livePreviewHeader">
               <div>
                 <span>Live preview</span>
@@ -1289,11 +1510,11 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
             <section className="previewSection">
               <div className="previewSectionTitle">
-                <strong>Job</strong>
+                <strong>{resourceLabel}</strong>
                 <span className="previewActionBadge create">Create</span>
               </div>
               <div className="previewPrimary">
-                {door.title.trim() || "Job name not entered"}
+                {door.title.trim() || `${resourceLabel} name not entered`}
               </div>
               {door.code && <small>Code: {door.code}</small>}
               {door.gps.address && <small>{door.gps.address}</small>}
@@ -1311,7 +1532,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 ))}
                 {!selectedInstances.length && (
                   <span className="previewEmptyPill">
-                    No Schedule / Time Clock selected
+                    No Job Scheduler / Time Clock selected
                   </span>
                 )}
               </div>
@@ -1319,7 +1540,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
 
             <section className="previewSection">
               <div className="previewSectionTitle">
-                <strong>Sub-jobs</strong>
+                <strong>{subResourcesLabel}</strong>
                 <span>{door.subJobs.length}</span>
               </div>
               {door.subJobs.length ? (
@@ -1332,7 +1553,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                   ))}
                 </div>
               ) : (
-                <div className="previewEmpty">Select Sub-jobs in Step 2.</div>
+                <div className="previewEmpty">Select {subResourcesLabel} in Step 2.</div>
               )}
             </section>
 
@@ -1356,7 +1577,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 </div>
               ) : (
                 <div className="previewEmpty">
-                  Enter a Job name to preview Smart Groups.
+                  Enter a {resourceLabel} name to preview Smart Groups.
                 </div>
               )}
               {selectedSegment && (
@@ -1373,7 +1594,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 <strong>
                   {door.title.trim()
                     ? `${existingDoorOption ? "Reuse" : "Add"} “${door.title.trim()}”`
-                    : "Waiting for Job name"}
+                    : "Waiting for {resourceLabel} name"}
                 </strong>
               </div>
               <div className="previewChangeRow">
@@ -1393,7 +1614,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
               {plannedGroups.length ? (
                 <>
                   <div className="previewQualification">
-                    <small>Parent Job</small>
+                    <small>Parent {resourceLabel}</small>
                     <strong>
                       {plannedGroups.map((group) => group.name).join(" + ")}
                     </strong>
@@ -1412,7 +1633,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 </>
               ) : (
                 <div className="previewEmpty">
-                  Qualification assignments appear as you build the Job.
+                  Qualification assignments appear as you build the {resourceLabel}.
                 </div>
               )}
             </section>
@@ -1435,7 +1656,7 @@ function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
                 </div>
               </section>
             )}
-          </aside>
+          </aside>}
         </div>
       </div>
     </>
