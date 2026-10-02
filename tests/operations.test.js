@@ -762,6 +762,8 @@ test("qualified door creation builds Door AND Brand smart groups before creating
   const result = await applyOperation("key", plan, request);
   assert.equal(result.complete, true);
   assert.equal(state.groups.length, 2);
+  assert.equal(state.groups[0].name, "Doors: Grove");
+  assert.equal(state.groups[1].name, "Doors: Grove · Brands: MEJ");
   assert.deepEqual(state.groups[0].filters, {
     operator: "and",
     dropdownFilters: [{ fieldId: 100, optionIds: [10] }],
