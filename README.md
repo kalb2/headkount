@@ -1,4 +1,4 @@
-# Connecteam Operations Manager
+# Connecteam Operations Manager — V1.6
 
 A standalone Next.js app for creating Connecteam Jobs and Sub-jobs, building the required Smart Groups, and assigning employee eligibility in one guided workflow.
 
@@ -14,6 +14,12 @@ The primary workflow is a four-step wizard:
 4. **Review** — review the Job, Sub-jobs, Smart Groups, User Detail changes, employee assignments, and qualification structure before creating anything.
 
 Headkount creates or reuses the required Smart Groups and verifies the resulting Connecteam records after writes.
+
+Each brand Smart Group uses Connecteam’s `filters.operator: "and"` with the Job dropdown tag and that brand’s tag. A person lands on a Sub-job only when both values are on their user record, so one employee can match several brands under the same Job and several Jobs at once.
+
+When you add or repair a Sub-job later, you can still pick an existing Smart Group or use **Create smart group** in the same preview and apply. New groups are merged into the picker after a successful apply. An empty Smart Group list is a normal account state, not an error; only a 401/403 access failure blocks creation.
+
+This release does not schedule shifts and does not delete Smart Groups.
 
 ## Customize labels for each client
 
@@ -59,4 +65,20 @@ Preview reads current Connecteam data before a write. Apply revalidates the prev
 
 See **VALIDATION.md** for validation behavior and **API-NOTES.md** for Connecteam API notes.
 
+The local production build and automated logic tests exercise the merged workflow. **Live account access and writes have not been verified** against a real Connecteam account in this merge. Start with a small selection; Connecteam membership can lag after User Detail writes, and one eligibility tagging pass updates at most 100 people.
+
+Connecteam does not document conditional writes or a multi-record transaction for these operations. A small race remains between the final read and the write, and earlier successful writes are not rolled back if a later write fails. A network interruption or hosting timeout may leave an unknown outcome. Refresh and inspect affected records before retrying.
+
 Routes request a maximum duration of 300 seconds; the actual execution limit depends on the Vercel plan or other hosting provider.
+
+## Optional browser regression suite
+
+This uses fictional users and jobs, and intercepts all Connecteam traffic. It is never enabled by normal `npm start`.
+
+```sh
+npm run build
+npx playwright install chromium
+npm run test:server
+# In another terminal:
+npm run test:browser
+```
