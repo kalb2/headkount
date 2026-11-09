@@ -6,10 +6,11 @@ const newDoor = () => ({
   description: "",
   gps: { address: "", latitude: "", longitude: "" },
   instanceIds: [],
-  parentGroupIds: [],
-  parentNewGroupKeys: [],
-  newGroups: [],
-  subJobs: [{ title: "", groupIds: [], newGroupKeys: [] }],
+  doorFieldId: "",
+  brandFieldId: "",
+  segmentId: "",
+  subJobs: [],
+  selectedUserIds: [],
 });
 const dropdownFields = (fields) =>
   (fields || []).filter(
@@ -142,6 +143,67 @@ function mergeSavedGroups(snapshot, report) {
 }
 const toggle = (values, id) =>
   values.includes(id) ? values.filter((x) => x !== id) : [...values, id];
+
+function userFieldOptionIds(user, fieldId) {
+  const value = user.customFields?.find(
+    (field) => Number(field.customFieldId) === Number(fieldId),
+  )?.value;
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => Number(item?.id ?? item))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+}
+function singularizeResourceLabel(value) {
+  const cleaned = String(value || "")
+    .replace(/\b(eligibility|eligible|access|assignment|assignments)\b/gi, "")
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  if (/ies$/i.test(cleaned)) return cleaned.replace(/ies$/i, "y");
+  if (/sses$/i.test(cleaned)) return cleaned.replace(/es$/i, "");
+  if (/s$/i.test(cleaned) && !/ss$/i.test(cleaned))
+    return cleaned.replace(/s$/i, "");
+  return cleaned;
+}
+
+function detectResourceLabel(snapshot) {
+  const me = snapshot?.me || {};
+  const candidates = [
+    me.resourceLabel,
+    me.resourceName,
+    me.resourcesLabel,
+    me.resourcesName,
+    me.jobLabel,
+    me.jobName,
+    me.jobsLabel,
+    me.jobsName,
+    me.settings?.resourceLabel,
+    me.settings?.resourceName,
+    me.settings?.jobsLabel,
+    me.settings?.jobsName,
+    me.company?.resourceLabel,
+    me.company?.resourceName,
+  ];
+  const returned = candidates.find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  if (returned) return singularizeResourceLabel(returned) || returned.trim();
+
+  // Do not infer Connecteam's resource terminology from a User Detail name.
+  // If the account API does not explicitly provide a renamed resource label,
+  // use Connecteam's default public terminology.
+  return "Job";
+}
+
+function pluralizeResourceLabel(value) {
+  const label = String(value || "Job").trim();
+  if (/y$/i.test(label) && !/[aeiou]y$/i.test(label))
+    return label.replace(/y$/i, "ies");
+  if (/s$/i.test(label)) return label;
+  return `${label}s`;
+}
+
 function Button({ kind = "primary", children, ...props }) {
   return (
     <button className={`btn ${kind}`} {...props}>
@@ -557,8 +619,8 @@ function flatten(jobs) {
     for (const s of p.subJobs || [])
       if (!s.isDeleted)
         map.set(s.jobId, {
-          ...map.get(s.jobId),
           ...s,
+          ...map.get(s.jobId),
           parentId: p.jobId,
           parentTitle: p.title,
         });
@@ -571,9 +633,9 @@ export default function Home() {
     [error, setError] = useState(""),
     [report, setReport] = useState(null),
     [plan, setPlan] = useState(null),
-    [tab, setTab] = useState("doors"),
-    [editor, setEditor] = useState(false),
+    [tab, setTab] = useState("create"),
     [door, setDoor] = useState(newDoor),
+    [wizardKey, setWizardKey] = useState(0),
     [managed, setManaged] = useState(null);
   const lock = useRef(false);
   useEffect(() => {
@@ -639,9 +701,13 @@ export default function Home() {
       });
       setReport(result);
       setSnapshot((current) => mergeSavedGroups(current, result));
-      if (result.complete && submitted.action === "createDoor") {
-        setEditor(false);
+      if (
+        result.complete &&
+        ["createDoor", "createQualifiedDoor"].includes(submitted.action)
+      ) {
         setDoor(newDoor());
+        setWizardKey((value) => value + 1);
+        setTab("create");
       }
       try {
         const refreshed = await refresh();
@@ -662,29 +728,22 @@ export default function Home() {
     sessionStorage.removeItem("connecteam_api_key");
     setApiKey("");
     setSnapshot(null);
-    setTab("doors");
+    setTab("create");
     setError("");
     setPlan(null);
     setReport(null);
     setManaged(null);
     setDoor(newDoor());
-    setEditor(false);
+    setWizardKey((value) => value + 1);
   }
   if (!snapshot)
     return (
       <main className="shell connectShell">
         <section className="connectCard">
           <div className="brandMark">C</div>
-          <span className="badge blue">Operations Manager · V1.5.0</span>
-          <h1>
-            Every door.
-            <br />
-            The right brands and people.
-          </h1>
-          <p>
-            Create a door, connect its brand sub-jobs to existing or new smart
-            groups, then preview and verify your changes.
-          </p>
+          <span className="badge blue">Operations Manager · V1.6.0</span>
+          <h1>Create and manage Connecteam Jobs.</h1>
+          <p>Connect your account to get started.</p>
           <Field
             label="Connecteam API key"
             hint="Kept in this browser session and sent through this app’s server. Disconnect to clear it."
@@ -716,12 +775,13 @@ export default function Home() {
           <span>C</span>
           <strong>Ops Manager</strong>
         </div>
-        <small className="version">V1.5.0</small>
+        <small className="version">V1.6.0</small>
         <nav>
           {[
-            ["doors", "Doors & brands"],
+            ["create", "Create Job"],
+            ["jobs", "Existing Jobs"],
+            ["assign", "Employee eligibility"],
             ["audit", "Audit & Repair"],
-            ["assign", "Employee assignments"],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -752,7 +812,7 @@ export default function Home() {
             <strong>
               {snapshot.me?.company?.name ||
                 snapshot.me?.companyName ||
-                "Door & brand workspace"}
+                "Jobs & Sub-jobs workspace"}
             </strong>
           </div>
           <span className="status">{groupStatusLabel(snapshot)}</span>
@@ -777,17 +837,24 @@ export default function Home() {
         )}
         {report && <Results report={report} />}
         <fieldset className="workspace" disabled={!!busy}>
-          {tab === "doors" && (
+          {tab === "create" && (
             <div className="content">
-              {editor ? (
-                <DoorBuilder
-                  door={door}
-                  setDoor={setDoor}
-                  snapshot={snapshot}
-                  onCancel={() => setEditor(false)}
-                  onPreview={() => preview("createDoor", door)}
-                />
-              ) : managed ? (
+              <DoorBuilder
+                key={wizardKey}
+                door={door}
+                setDoor={setDoor}
+                snapshot={snapshot}
+                onCancel={() => {
+                  setDoor(newDoor());
+                  setWizardKey((value) => value + 1);
+                }}
+                onPreview={() => preview("createQualifiedDoor", door)}
+              />
+            </div>
+          )}
+          {tab === "jobs" && (
+            <div className="content">
+              {managed ? (
                 <ManageDoor
                   parent={parents.find((p) => p.jobId === managed)}
                   subJobs={subJobs.filter((s) => s.parentId === managed)}
@@ -799,8 +866,11 @@ export default function Home() {
                 <Doors
                   parents={parents}
                   subJobs={subJobs}
-                  snapshot={snapshot}
-                  onCreate={() => setEditor(true)}
+                  onCreate={() => {
+                    setDoor(newDoor());
+                    setWizardKey((value) => value + 1);
+                    setTab("create");
+                  }}
                   onManage={setManaged}
                 />
               )}
@@ -818,6 +888,11 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+              <SmartGroupBindingDiagnostic
+                snapshot={snapshot}
+                parents={parents}
+                subJobs={subJobs}
+              />
               <RepairTable
                 snapshot={snapshot}
                 subJobs={subJobs}
@@ -838,44 +913,51 @@ export default function Home() {
     </main>
   );
 }
-function Doors({ parents, subJobs, snapshot, onCreate, onManage }) {
+function Doors({ parents, subJobs, onCreate, onManage }) {
   const [search, setSearch] = useState("");
-  const rows = parents.filter((j) =>
-    `${j.title} ${j.code || ""}`.toLowerCase().includes(search.toLowerCase()),
-  );
+  const rows = parents
+    .filter((j) =>
+      `${j.title} ${j.code || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+    )
+    .sort((a, b) =>
+      String(a.title || "").localeCompare(String(b.title || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
   return (
     <>
       <div className="headingRow">
         <div>
-          <p className="eyebrow">Primary workflow</p>
-          <h2>Doors & brands</h2>
+          <p className="eyebrow">Existing Jobs</p>
+          <h2>Jobs</h2>
           <p>
-            One door → brand sub-jobs → existing smart groups → review → save.
+            View or manage Jobs already in Connecteam.
           </p>
         </div>
-        <Button onClick={onCreate}>+ Create door setup</Button>
+        <Button onClick={onCreate}>Create Job</Button>
       </div>
-      <GroupLoadState snapshot={snapshot} onCreate={onCreate} />
       <div className="metricGrid">
-        <Metric label="Doors / parent jobs" value={parents.length} />
-        <Metric label="Brand sub-jobs" value={subJobs.length} />
+        <Metric label="Jobs" value={parents.length} />
+        <Metric label="Sub-jobs" value={subJobs.length} />
       </div>
       <div className="panel">
         <div className="panelToolbar">
           <input
             className="search"
-            aria-label="Search doors"
-            placeholder="Search doors or job codes…"
+            aria-label="Search Jobs"
+            placeholder="Search Jobs or Job codes…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <span>{rows.length} doors</span>
+          <span>{rows.length} Jobs</span>
         </div>
         <div className="tableWrap">
           <table>
             <thead>
               <tr>
-                <th>Door / Job</th>
+                <th>Job</th>
                 <th>Brands</th>
                 <th>Manage</th>
               </tr>
@@ -901,58 +983,18 @@ function Doors({ parents, subJobs, snapshot, onCreate, onManage }) {
           </table>
           {!rows.length && (
             <p className="emptyBuilder">
-              No matching doors. Create your first setup above.
+              No matching Jobs. Create your first Job above.
             </p>
           )}
         </div>
         {rows.length > 500 && (
           <p className="tableNote">
-            Showing 500 results. Search to find any door.
+            Showing 500 results. Search to find any Job.
           </p>
         )}
       </div>
     </>
   );
-}
-function GroupLoadState({ snapshot, onCreate }) {
-  const blocked = groupBlockMessage(snapshot);
-  if (blocked)
-    return (
-      <Notice tone="danger">
-        <strong>Smart groups are blocked.</strong>
-        <p>{blocked}</p>
-        <p>Creating a group stays off until this access error is resolved.</p>
-      </Notice>
-    );
-  if (!snapshot.smartGroupsLoaded && snapshot.smartGroupsError)
-    return (
-      <div className="emptyState">
-        <strong>Smart groups could not be loaded.</strong>
-        <p>
-          {failureText(
-            snapshot.smartGroupsError,
-            "The smart-group list failed.",
-          )}
-        </p>
-        <p>
-          This was not a permission error, so you can still create a group and
-          assign it. Refresh to try the list again.
-        </p>
-        <Button onClick={onCreate}>Create smart group</Button>
-      </div>
-    );
-  if (snapshot.smartGroupsLoaded && !snapshot.smartGroups.length)
-    return (
-      <div className="emptyState">
-        <strong>No smart groups yet.</strong>
-        <p>
-          Create one here, then assign it to a door or brand in the same
-          preview. An empty list is not an error.
-        </p>
-        <Button onClick={onCreate}>Create smart group</Button>
-      </div>
-    );
-  return null;
 }
 function Metric({ label, value }) {
   return (
@@ -963,586 +1005,1119 @@ function Metric({ label, value }) {
   );
 }
 function DoorBuilder({ door, setDoor, snapshot, onCancel, onPreview }) {
-  const set = (key, value) => setDoor((d) => ({ ...d, [key]: value }));
-  const groups = snapshot.smartGroups;
-  const instances = [
-    ...snapshot.schedulers
-      .filter((s) => !s.isArchived)
-      .map((s) => ({ id: s.schedulerId, name: s.name, type: "Schedule" })),
-    ...snapshot.timeClocks
-      .filter((t) => !t.isArchived)
-      .map((t) => ({ id: t.id, name: t.name, type: "Time clock" })),
-  ];
-  const update = (i, patch) =>
-    set(
-      "subJobs",
-      door.subJobs.map((s, index) => (index === i ? { ...s, ...patch } : s)),
-    );
-  const fields = dropdownFields(snapshot.userFields);
-  const parentChosen =
-    door.parentGroupIds.length || (door.parentNewGroupKeys || []).length;
-  const blocked = !!groupBlockMessage(snapshot);
-  const listFailed = !snapshot.smartGroupsLoaded && !!snapshot.smartGroupsError;
-  const createFirst = !blocked && !groups.length;
-  const multiFields = fields.filter((field) => field.isMultiSelect === true);
-  const eligibility = door.eligibility;
-  const eligibilityOn = !!eligibility?.doorFieldId;
-  const brandField = multiFields.find(
-    (field) => field.id === Number(eligibility?.brandFieldId),
+  const set = (key, value) => setDoor((current) => ({ ...current, [key]: value }));
+  const [step, setStep] = useState(1);
+  const [subItemSearch, setSubItemSearch] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeeGroupId, setEmployeeGroupId] = useState("");
+  const [employeeFieldId, setEmployeeFieldId] = useState("");
+  const [employeeOptionId, setEmployeeOptionId] = useState("");
+
+  const groups = snapshot.smartGroups || [];
+  const dropdownFields = snapshot.userFields.filter(
+    (field) => field.type === "dropdown" && field.isMultiSelect === true,
   );
-  const segmentReady = !eligibilityOn || !!eligibility.segmentId;
-  const valid =
-    !blocked &&
-    door.title.trim() &&
-    door.instanceIds.length &&
-    door.subJobs.length &&
-    door.subJobs.every((sub) => sub.title.trim()) &&
-    (eligibilityOn
-      ? eligibility.brandFieldId && segmentReady
-      : door.subJobs.every(
-          (sub) =>
-            sub.groupIds.length ||
-            (sub.newGroupKeys || []).length ||
-            parentChosen,
-        ));
-  function setEligibility(patch) {
-    setDoor((current) => ({
-      ...current,
-      eligibility: {
-        doorFieldId: "",
-        doorValue: "",
-        doorOptionId: "",
-        brandFieldId: "",
-        cohortGroupIds: [],
-        cohortOptionIds: [],
-        segmentId: snapshot.smartGroupSegments?.[0]
-          ? String(snapshot.smartGroupSegments[0].id)
-          : "new",
-        segmentName: "",
-        color: "#3968bb",
-        ...(current.eligibility || {}),
-        ...patch,
-      },
-    }));
-  }
-  function addPending(draft) {
-    setDoor((current) => ({
-      ...current,
-      newGroups: [...(current.newGroups || []), draft],
-    }));
-  }
-  function removePending(key) {
-    setDoor((current) => ({
-      ...current,
-      newGroups: (current.newGroups || []).filter((group) => group.key !== key),
-      parentNewGroupKeys: (current.parentNewGroupKeys || []).filter(
-        (item) => item !== key,
-      ),
-      subJobs: current.subJobs.map((sub) => ({
-        ...sub,
-        newGroupKeys: (sub.newGroupKeys || []).filter((item) => item !== key),
-      })),
-    }));
-  }
+  const doorField = dropdownFields.find(
+    (field) => Number(field.id) === Number(door.doorFieldId),
+  );
+  const brandField = dropdownFields.find(
+    (field) => Number(field.id) === Number(door.brandFieldId),
+  );
+  const brandOptions = (brandField?.dropdownOptions || []).filter(
+    (option) => !option.isDeleted && !option.isDisabled,
+  );
+  const resourceLabel = detectResourceLabel(snapshot);
+  const resourcesLabel = pluralizeResourceLabel(resourceLabel);
+  const subResourceLabel = `Sub-${resourceLabel.toLowerCase()}`;
+  const subResourcesLabel = `Sub-${resourcesLabel.toLowerCase()}`;
+  const schedules = snapshot.schedulers
+    .filter((item) => !item.isArchived)
+    .map((item) => ({ id: item.schedulerId, name: item.name }))
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  const timeClocks = snapshot.timeClocks
+    .filter((item) => !item.isArchived)
+    .map((item) => ({ id: item.id, name: item.name }))
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
+
   useEffect(() => {
     setDoor((current) => {
-      const parent = adoptCreatedGroups(
-        current.newGroups,
-        current.parentNewGroupKeys,
-        current.parentGroupIds,
-        snapshot.smartGroups,
-      );
-      let subChanged = false;
-      const subJobs = current.subJobs.map((sub) => {
-        const next = adoptCreatedGroups(
-          current.newGroups,
-          sub.newGroupKeys,
-          sub.groupIds,
-          snapshot.smartGroups,
+      const next = { ...current };
+      let changed = false;
+
+      if (!next.doorFieldId) {
+        const match =
+          dropdownFields.find((field) =>
+            /door|job|location|store/i.test(field.name || ""),
+          ) || dropdownFields[0];
+        if (match) {
+          next.doorFieldId = String(match.id);
+          changed = true;
+        }
+      }
+
+      if (!next.brandFieldId) {
+        const match = dropdownFields.find((field) =>
+          /brand/i.test(field.name || ""),
         );
-        if (!next.changed) return sub;
-        subChanged = true;
-        return {
-          ...sub,
-          newGroupKeys: next.selectedKeys,
-          groupIds: next.selectedIds,
-        };
-      });
-      if (!parent.changed && !subChanged) return current;
-      return {
-        ...current,
-        newGroups: parent.pending,
-        parentNewGroupKeys: parent.selectedKeys,
-        parentGroupIds: parent.selectedIds,
-        subJobs,
-      };
+        if (match && Number(match.id) !== Number(next.doorFieldId)) {
+          next.brandFieldId = String(match.id);
+          changed = true;
+        }
+      }
+
+      if (!next.segmentId && snapshot.smartGroupSegments?.length) {
+        const match =
+          snapshot.smartGroupSegments.find((segment) =>
+            /headkount|job|location/i.test(segment.name || ""),
+          ) || snapshot.smartGroupSegments[0];
+        next.segmentId = String(match.id);
+        changed = true;
+      }
+
+      return changed ? next : current;
     });
-  }, [snapshot.smartGroups, setDoor]);
-  const parentSection = (
-    <>
-      <h3>{createFirst ? "Create a smart group" : "2. Parent eligibility"}</h3>
-      <p className="muted">
-        {createFirst
-          ? "Name the group, pick an existing segment or create one, and add dropdown filters only if membership should depend on them. Add the group and leave it checked, then assign it to this door or a brand."
-          : "Optional if every brand has its own groups. Brands without custom groups inherit these groups, the description, and the location."}
-      </p>
-      <Groups
-        label="Parent smart groups"
-        groups={groups}
-        segments={snapshot.smartGroupSegments || []}
-        segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
-        fields={fields}
-        createBlocked={blocked}
-        blockMessage={groupBlockMessage(snapshot)}
-        listFailed={listFailed}
-        value={door.parentGroupIds}
-        onChange={(v) => set("parentGroupIds", v)}
-        pending={door.newGroups || []}
-        selectedKeys={door.parentNewGroupKeys || []}
-        onSelectedKeys={(keys) => set("parentNewGroupKeys", keys)}
-        onCreatePending={addPending}
-        onRemovePending={removePending}
-      />
-    </>
+  }, [dropdownFields, snapshot.smartGroupSegments, setDoor]);
+
+  const selectedBrandIds = door.subJobs.map((sub) => Number(sub.brandOptionId));
+  const employeeFilterFields = snapshot.userFields.filter(
+    (field) => field.type === "dropdown",
   );
+  const employeeFilterField = employeeFilterFields.find(
+    (field) => Number(field.id) === Number(employeeFieldId),
+  );
+  const employeeFilterOptions = (
+    employeeFilterField?.dropdownOptions || []
+  ).filter((option) => !option.isDeleted && !option.isDisabled);
+  const supportsSmartGroupMembership = snapshot.users.some(
+    (user) => Array.isArray(user.smartGroupIds),
+  );
+  const visibleEmployees = snapshot.users.filter((user) => {
+    const haystack =
+      `${user.firstName || ""} ${user.lastName || ""} ${user.email || ""}`.toLowerCase();
+    if (!haystack.includes(employeeSearch.toLowerCase())) return false;
+    if (
+      employeeGroupId &&
+      !((user.smartGroupIds || []).map(Number).includes(Number(employeeGroupId)))
+    )
+      return false;
+    if (
+      employeeFieldId &&
+      employeeOptionId &&
+      !userFieldOptionIds(user, employeeFieldId).includes(Number(employeeOptionId))
+    )
+      return false;
+    return true;
+  });
+  const selectedEmployees = snapshot.users.filter((user) =>
+    door.selectedUserIds.includes(user.userId),
+  );
+  const employeeBrandMatches = (user) => {
+    const optionIds = userFieldOptionIds(user, door.brandFieldId);
+    return brandOptions.filter(
+      (option) =>
+        selectedBrandIds.includes(Number(option.id)) &&
+        optionIds.includes(Number(option.id)),
+    );
+  };
+  const selectedWithoutBrand = selectedEmployees.filter(
+    (user) => employeeBrandMatches(user).length === 0,
+  );
+
+  const selectedSegment = (snapshot.smartGroupSegments || []).find(
+    (segment) => Number(segment.id) === Number(door.segmentId),
+  );
+  const existingDoorOption = doorField?.dropdownOptions?.find(
+    (option) =>
+      !option.isDeleted &&
+      !option.isDisabled &&
+      String(option.value || "").trim().toLowerCase() ===
+        String(door.title || "").trim().toLowerCase(),
+  );
+  const selectedInstances = [
+    ...timeClocks
+      .filter((item) => door.instanceIds.includes(item.id))
+      .map((item) => ({ ...item, type: "Time Clock" })),
+    ...schedules
+      .filter((item) => door.instanceIds.includes(item.id))
+      .map((item) => ({ ...item, type: "Job Scheduler" })),
+  ];
+  const plannedGroups =
+    door.title.trim() && doorField && brandField
+      ? [
+          {
+            key: "door",
+            name: `${doorField.name}: ${door.title.trim()}`,
+            description: `Headkount qualification: fieldId=${Number(
+              doorField.id,
+            )}; value=${door.title.trim()}`,
+            legacyDescription: `Headkount qualification: Door=${door.title.trim()}`,
+          },
+          ...door.subJobs.map((sub) => ({
+            key: `brand:${sub.title}`,
+            name: `${doorField.name}: ${door.title.trim()} · ${brandField.name}: ${sub.title}`,
+            description: `Headkount qualification: fieldId=${Number(
+              doorField.id,
+            )}; value=${door.title.trim()}; brandFieldId=${Number(
+              brandField.id,
+            )}; brandOptionId=${Number(sub.brandOptionId)}`,
+            legacyDescription: `Headkount qualification: Door=${door.title.trim()}; Brand=${sub.title}`,
+            subJob: sub.title,
+          })),
+        ].map((planned) => {
+          const inSegment = groups.filter(
+            (group) =>
+              Number(group.groupSegmentId ?? group.segmentId) ===
+              Number(door.segmentId),
+          );
+          const reusable = inSegment.find(
+            (group) =>
+              group.description === planned.description ||
+              group.description === planned.legacyDescription,
+          );
+          const sameName = inSegment.find(
+            (group) =>
+              String(group.name || "").trim().toLowerCase() ===
+              planned.name.toLowerCase(),
+          );
+          return {
+            ...planned,
+            status: reusable ? "Reuse" : sameName ? "Conflict" : "Create",
+          };
+        })
+      : [];
+  const totalSubJobAssignments = selectedEmployees.reduce(
+    (total, user) => total + employeeBrandMatches(user).length,
+    0,
+  );
+
+  const stepOneValid =
+    door.title.trim() &&
+    door.instanceIds.length &&
+    door.doorFieldId &&
+    door.brandFieldId &&
+    door.segmentId &&
+    Number(door.doorFieldId) !== Number(door.brandFieldId);
+  const stepTwoValid =
+    door.subJobs.length > 0 &&
+    door.subJobs.every((sub) => sub.title.trim() && sub.brandOptionId);
+  const stepThreeValid = door.selectedUserIds.length > 0;
+  const canContinue =
+    step === 1 ? stepOneValid : step === 2 ? stepTwoValid : stepThreeValid;
+
+  const steps = [
+    [resourceLabel, `Enter the ${resourceLabel} details`],
+    [subResourcesLabel, `Select the ${subResourcesLabel}`],
+    ["Employees", `Select who can work this ${resourceLabel}`],
+    ["Review", "Check and create"],
+  ];
+
   return (
     <>
-      <div className="headingRow">
+      <div className="wizardPageTitle">
         <div>
-          <p className="eyebrow">New door setup</p>
-          <h2>Create a door & its brands</h2>
-          <p>
-            All brands and assignments are created together after your review.
-          </p>
+          <p className="eyebrow">Create {resourceLabel}</p>
+          <h2>New {resourceLabel}</h2>
         </div>
         <Button kind="ghost" onClick={onCancel}>
-          Back to doors
+          Start over
         </Button>
       </div>
-      {blocked ? (
-        <Notice tone="danger">
-          <strong>Smart groups are blocked.</strong>
-          <p>{groupBlockMessage(snapshot)}</p>
-        </Notice>
-      ) : listFailed ? (
-        <Notice tone="warning">
-          <strong>Smart groups could not be loaded.</strong>
-          <p>
-            {failureText(
-              snapshot.smartGroupsError,
-              "The smart-group list failed.",
-            )}
-          </p>
-          <p>
-            This was not a permission error. Create a smart group below and
-            assign it. Refresh to try the list again.
-          </p>
-        </Notice>
-      ) : !groups.length ? (
-        <Notice>
-          No smart groups yet. Name one below, choose a segment, and add filters
-          only if you need them. An empty list is not an error.
-        </Notice>
-      ) : (
-        <Notice>
-          {groups.length} existing smart groups available. Job and brand
-          eligibility below batches one group per brand. A person lands on a
-          brand only when they match the job and that brand. Extra groups
-          selected by hand are alternatives to that rule.
-        </Notice>
-      )}
-      <div className="panel formPanel">
-        <h3>Job and brand eligibility</h3>
-        <p className="muted">
-          Primary setup for a new job with several brands. Choose the job and
-          brand dropdowns, then preview. The app creates the tags, one smart
-          group for the job, and one smart group per brand. People who already
-          qualify for the job and a brand are tagged automatically. The group
-          lists further down remain available for a single group.
-        </p>
-        {!multiFields.length && (
-          <Notice tone="warning">
-            This account has no multi-select dropdown fields, so eligibility
-            tags cannot be stored yet. Create those fields in Connecteam, or
-            assign groups manually below.
-          </Notice>
-        )}
-        <div className="formGrid two">
-          <Field label="Job dropdown">
-            <select
-              aria-label="Job dropdown"
-              value={eligibility?.doorFieldId || ""}
-              disabled={blocked}
-              onChange={(e) =>
-                e.target.value
-                  ? setEligibility({
-                      doorFieldId: e.target.value,
-                      doorOptionId: "",
-                      cohortOptionIds: [],
-                    })
-                  : set("eligibility", null)
-              }
-            >
-              <option value="">Skip — assign groups manually</option>
-              {multiFields.map((field) => (
-                <option key={field.id} value={field.id}>
-                  {field.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {eligibilityOn && (
-            <Field
-              label="Job tag"
-              hint="Leave blank to use the job name. Pick an existing tag if this job is already on the field."
-            >
-              <input
-                aria-label="Job tag"
-                maxLength={128}
-                value={eligibility.doorValue || ""}
-                placeholder={door.title || "New job tag"}
-                onChange={(e) =>
-                  setEligibility({
-                    doorValue: e.target.value,
-                    doorOptionId: "",
-                  })
-                }
-              />
-            </Field>
-          )}
-        </div>
-        {eligibilityOn && (
-          <>
-            <Field label="Existing job tag">
-              <select
-                aria-label="Existing job tag"
-                value={eligibility.doorOptionId || ""}
-                onChange={(e) =>
-                  setEligibility({
-                    doorOptionId: e.target.value,
-                    doorValue: e.target.value ? "" : eligibility.doorValue,
-                  })
-                }
+
+      <div className="wizardShell">
+        <div className="wizardProgress" aria-label="Job setup progress">
+          {steps.map(([label], index) => {
+            const number = index + 1;
+            return (
+              <div
+                key={label}
+                className={`wizardProgressStep ${
+                  number === step ? "active" : number < step ? "done" : ""
+                }`}
               >
-                <option value="">Create the job tag above</option>
-                {(
-                  multiFields.find(
-                    (field) => field.id === Number(eligibility.doorFieldId),
-                  )?.dropdownOptions || []
-                )
-                  .filter((option) => !option.isDeleted && !option.isDisabled)
-                  .map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.value}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            <div className="formGrid two">
-              <Field label="Brand dropdown">
-                <select
-                  aria-label="Brand dropdown"
-                  value={eligibility.brandFieldId || ""}
-                  onChange={(e) =>
-                    setEligibility({ brandFieldId: e.target.value })
-                  }
-                >
-                  <option value="">Choose the brand field</option>
-                  {multiFields
-                    .filter(
-                      (field) => field.id !== Number(eligibility.doorFieldId),
-                    )
-                    .map((field) => (
-                      <option key={field.id} value={field.id}>
-                        {field.name}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              <Field label="Segment for these groups">
-                <select
-                  aria-label="Eligibility segment"
-                  value={eligibility.segmentId || ""}
-                  onChange={(e) =>
-                    setEligibility({ segmentId: e.target.value })
-                  }
-                >
-                  {(snapshot.smartGroupSegments || []).map((segment) => (
-                    <option key={segment.id} value={segment.id}>
-                      {segment.name}
-                    </option>
-                  ))}
-                  <option value="new">Create a new segment…</option>
-                </select>
-              </Field>
-            </div>
-            {String(eligibility.segmentId) === "new" && (
+                <span>{number < step ? "✓" : number}</span>
+                <strong>{label}</strong>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className={`wizardWorkspace ${step === 4 ? "reviewMode" : ""}`}>
+          <div className="wizardCard">
+          <div className="wizardStepHeader">
+            <span>Step {step} of 4</span>
+            <h3>{steps[step - 1][0]}</h3>
+            <p>{steps[step - 1][1]}</p>
+          </div>
+
+          {step === 1 && (
+            <div className="wizardStepBody">
               <div className="formGrid two">
-                <Field label="New eligibility segment">
+                <Field
+                  label={`${resourceLabel} name`}
+                  hint="This is the name shown in Connecteam."
+                >
                   <input
+                    autoFocus
                     maxLength={128}
-                    value={eligibility.segmentName || ""}
-                    placeholder={`${door.title || "Job"} eligibility`}
-                    onChange={(e) =>
-                      setEligibility({ segmentName: e.target.value })
-                    }
+                    value={door.title}
+                    onChange={(e) => set("title", e.target.value)}
+                    placeholder="Sephora — The Grove"
                   />
                 </Field>
-                <Field label="Segment color">
+                <Field label={`${resourceLabel} code (optional)`}>
                   <input
-                    aria-label="Eligibility segment color"
-                    type="color"
-                    value={eligibility.color || "#3968bb"}
-                    onChange={(e) => setEligibility({ color: e.target.value })}
+                    value={door.code}
+                    onChange={(e) => set("code", e.target.value)}
                   />
                 </Field>
               </div>
-            )}
-            <fieldset className="groupPicker">
-              <legend>Who already qualifies for this job</legend>
-              <p className="muted">
-                A person qualifies for the job when they are in any checked
-                group or already have any checked job tag. They are then added
-                to a brand only if they also match that brand.
-              </p>
-              <div className="checkGrid">
-                {groups.map((group) => (
-                  <label key={group.id}>
+
+              <Field label={`${resourceLabel} description (optional)`}>
+                <textarea
+                  value={door.description}
+                  onChange={(e) => set("description", e.target.value)}
+                />
+              </Field>
+
+              <Field label={`${resourceLabel} address (optional)`}>
+                <input
+                  value={door.gps.address}
+                  onChange={(e) =>
+                    set("gps", { ...door.gps, address: e.target.value })
+                  }
+                  placeholder="Street address, city, state, ZIP"
+                />
+              </Field>
+
+              <details className="coordinateDetails">
+                <summary>Precise coordinates</summary>
+                <div className="formGrid two">
+                  <Field label="Latitude">
                     <input
-                      type="checkbox"
-                      checked={(eligibility.cohortGroupIds || []).includes(
-                        group.id,
-                      )}
-                      onChange={() =>
-                        setEligibility({
-                          cohortGroupIds: toggle(
-                            eligibility.cohortGroupIds || [],
-                            group.id,
-                          ),
+                      type="number"
+                      step="any"
+                      value={door.gps.latitude}
+                      onChange={(e) =>
+                        set("gps", {
+                          ...door.gps,
+                          latitude: e.target.value,
                         })
                       }
+                      placeholder="34.0722"
                     />
-                    <span>
-                      {group.name}
-                      <small>Smart group</small>
-                    </span>
-                  </label>
-                ))}
-                {(
-                  multiFields.find(
-                    (field) => field.id === Number(eligibility.doorFieldId),
-                  )?.dropdownOptions || []
-                )
-                  .filter((option) => !option.isDeleted && !option.isDisabled)
-                  .map((option) => (
-                    <label key={`opt-${option.id}`}>
-                      <input
-                        type="checkbox"
-                        checked={(eligibility.cohortOptionIds || []).includes(
-                          option.id,
-                        )}
-                        onChange={() =>
-                          setEligibility({
-                            cohortOptionIds: toggle(
-                              eligibility.cohortOptionIds || [],
-                              option.id,
-                            ),
-                          })
-                        }
-                      />
-                      <span>
-                        {option.value}
-                        <small>Existing job tag</small>
-                      </span>
-                    </label>
-                  ))}
+                  </Field>
+                  <Field label="Longitude">
+                    <input
+                      type="number"
+                      step="any"
+                      value={door.gps.longitude}
+                      onChange={(e) =>
+                        set("gps", {
+                          ...door.gps,
+                          longitude: e.target.value,
+                        })
+                      }
+                      placeholder="-118.3570"
+                    />
+                  </Field>
+                </div>
+                <small>Enter both latitude and longitude.</small>
+              </details>
+
+              <div className="wizardSectionLabel">
+                <strong>Add this {resourceLabel} to</strong>
               </div>
-              {!groups.length && (
-                <p className="muted">
-                  No smart groups are loaded. Use existing job tags, or create
-                  the groups now and tag people later.
-                </p>
-              )}
-            </fieldset>
-          </>
-        )}
-        {createFirst && parentSection}
-        <h3>{createFirst ? "Door details" : "1. Door details"}</h3>
-        <div className="formGrid two">
-          <Field label="Door / job name">
-            <input
-              maxLength={128}
-              value={door.title}
-              onChange={(e) => set("title", e.target.value)}
-              placeholder="Sephora — The Grove"
-            />
-          </Field>
-          <Field label="Code (optional)">
-            <input
-              value={door.code}
-              onChange={(e) => set("code", e.target.value)}
-            />
-          </Field>
-        </div>
-        <Field label="Description (optional)">
-          <textarea
-            value={door.description}
-            onChange={(e) => set("description", e.target.value)}
-          />
-        </Field>
-        <Field label="Address (optional)">
-          <input
-            value={door.gps.address}
-            onChange={(e) =>
-              set("gps", { ...door.gps, address: e.target.value })
-            }
-          />
-        </Field>
-        <div className="formGrid two">
-          {["latitude", "longitude"].map((key) => (
-            <Field
-              key={key}
-              label={`${key[0].toUpperCase() + key.slice(1)} (optional)`}
-            >
-              <input
-                type="number"
-                step="any"
-                value={door.gps[key]}
-                onChange={(e) =>
-                  set("gps", { ...door.gps, [key]: e.target.value })
-                }
-              />
-            </Field>
-          ))}
-        </div>
-        <fieldset className="groupPicker">
-          <legend>Schedules / time clocks</legend>
-          <div className="checkGrid">
-            {instances.map((i) => (
-              <label key={`${i.type}-${i.id}`}>
-                <input
-                  type="checkbox"
-                  checked={door.instanceIds.includes(i.id)}
-                  onChange={() =>
-                    set("instanceIds", toggle(door.instanceIds, i.id))
-                  }
-                />
-                <span>
-                  {i.name}
-                  <small>{i.type}</small>
-                </span>
-              </label>
-            ))}
-          </div>
-          {!instances.length && (
-            <p>
-              No schedules or time clocks loaded. Check scan warnings and
-              refresh.
-            </p>
-          )}
-        </fieldset>
-        {!createFirst && parentSection}
-        <h3>{createFirst ? "Brand sub-jobs" : "3. Brand sub-jobs"}</h3>
-        <p className="muted">
-          Each custom assignment uses the door’s description and location at
-          creation. Later parent changes will not flow into those custom
-          sub-jobs.
-        </p>
-        {door.subJobs.map((s, i) => (
-          <div className="brandCard" key={i}>
-            <div className="formGrid two">
-              <Field label={`Brand ${i + 1} name`}>
-                <input
-                  maxLength={128}
-                  placeholder="MEJ"
-                  value={s.title}
-                  onChange={(e) => update(i, { title: e.target.value })}
-                />
-              </Field>
-              {eligibilityOn && (
-                <Field label={`Brand ${i + 1} tag`}>
-                  <select
-                    aria-label={`Brand ${i + 1} tag`}
-                    value={s.brandOptionId || ""}
-                    onChange={(e) =>
-                      update(i, { brandOptionId: e.target.value })
-                    }
+              <div className="instancePickerGrid">
+                <fieldset className="groupPicker instancePicker">
+                  <legend>Time Clocks</legend>
+                  <div className="checkGrid">
+                    {timeClocks.map((clock) => (
+                      <label key={`clock-${clock.id}`}>
+                        <input
+                          type="checkbox"
+                          checked={door.instanceIds.includes(clock.id)}
+                          onChange={() =>
+                            set("instanceIds", toggle(door.instanceIds, clock.id))
+                          }
+                        />
+                        <span>{clock.name}</span>
+                      </label>
+                    ))}
+                    {!timeClocks.length && (
+                      <p className="instanceEmpty">No Time Clocks loaded.</p>
+                    )}
+                  </div>
+                </fieldset>
+
+                <fieldset className="groupPicker instancePicker">
+                  <legend>Job Schedulers</legend>
+                  <div className="checkGrid">
+                    {schedules.map((schedule) => (
+                      <label key={`schedule-${schedule.id}`}>
+                        <input
+                          type="checkbox"
+                          checked={door.instanceIds.includes(schedule.id)}
+                          onChange={() =>
+                            set(
+                              "instanceIds",
+                              toggle(door.instanceIds, schedule.id),
+                            )
+                          }
+                        />
+                        <span>{schedule.name}</span>
+                      </label>
+                    ))}
+                    {!schedules.length && (
+                      <p className="instanceEmpty">No Job Schedulers loaded.</p>
+                    )}
+                  </div>
+                </fieldset>
+              </div>
+
+              <details className="wizardAdvanced">
+                <summary>Eligibility settings</summary>
+                <div className="formGrid three">
+                  <Field
+                    label={`${resourceLabel} eligibility User Detail`}
+                    
                   >
-                    <option value="">
-                      Create a tag named {s.title || "this brand"}
-                    </option>
-                    {(brandField?.dropdownOptions || [])
-                      .filter(
-                        (option) => !option.isDeleted && !option.isDisabled,
-                      )
-                      .map((option) => (
+                    <select
+                      value={door.doorFieldId}
+                      onChange={(e) => set("doorFieldId", e.target.value)}
+                    >
+                      <option value="">Select User Detail</option>
+                      {dropdownFields.map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field
+                    label="Brand eligibility User Detail"
+                    
+                  >
+                    <select
+                      value={door.brandFieldId}
+                      onChange={(e) =>
+                        setDoor((current) => ({
+                          ...current,
+                          brandFieldId: e.target.value,
+                          subJobs: [],
+                        }))
+                      }
+                    >
+                      <option value="">Select User Detail</option>
+                      {dropdownFields.map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field
+                    label="Smart Group segment"
+                    
+                  >
+                    <select
+                      value={door.segmentId}
+                      onChange={(e) => set("segmentId", e.target.value)}
+                    >
+                      <option value="">Select segment</option>
+                      {(snapshot.smartGroupSegments || []).map((segment) => (
+                        <option key={segment.id} value={segment.id}>
+                          {segment.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                {door.doorFieldId &&
+                  door.brandFieldId &&
+                  Number(door.doorFieldId) === Number(door.brandFieldId) && (
+                    <Notice tone="warning">
+                      {resourceLabel} eligibility and Brand eligibility must use two
+                      different User Details.
+                    </Notice>
+                  )}
+              </details>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="wizardStepBody">
+              <div className="brandOptionPicker">
+                <div className="brandOptionToolbar">
+                  <div>
+                    <strong>
+                      {door.title}
+                    </strong>
+                    <small>{door.subJobs.length} selected</small>
+                  </div>
+                  <input
+                    aria-label="Search brands"
+                    placeholder="Search brands"
+                    value={subItemSearch}
+                    onChange={(e) => setSubItemSearch(e.target.value)}
+                    disabled={!brandField}
+                  />
+                  {brandField && (
+                    <div className="brandOptionActions">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          set(
+                            "subJobs",
+                            brandOptions.map((option) => ({
+                              title: option.value,
+                              brandOptionId: Number(option.id),
+                            })),
+                          )
+                        }
+                      >
+                        Select all
+                      </button>
+                      <button type="button" onClick={() => set("subJobs", [])}>
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="brandOptionGrid">
+                  {brandOptions
+                    .filter((option) =>
+                      String(option.value || "")
+                        .toLowerCase()
+                        .includes(subItemSearch.toLowerCase()),
+                    )
+                    .map((option) => {
+                      const selected = door.subJobs.some(
+                        (sub) =>
+                          Number(sub.brandOptionId) === Number(option.id),
+                      );
+                      return (
+                        <label
+                          className={`brandOptionRow ${
+                            selected ? "selected" : ""
+                          }`}
+                          key={option.id}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() =>
+                              set(
+                                "subJobs",
+                                selected
+                                  ? door.subJobs.filter(
+                                      (sub) =>
+                                        Number(sub.brandOptionId) !==
+                                        Number(option.id),
+                                    )
+                                  : [
+                                      ...door.subJobs,
+                                      {
+                                        title: option.value,
+                                        brandOptionId: Number(option.id),
+                                      },
+                                    ],
+                              )
+                            }
+                          />
+                          <span>
+                            <strong>{option.value}</strong>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  {!brandOptions.length && (
+                    <p className="emptyBuilder">
+                      No active brand options were found in{" "}
+                      {brandField?.name || "the selected User Detail"}.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="wizardStepBody">
+              <div className="wizardContext">
+                <strong>{door.title}</strong>
+                <span>Choose who can work this {resourceLabel}.</span>
+              </div>
+
+              <div className="employeeSetupPanel">
+                <div className="employeeSetupFilters">
+                  <label className="employeeFilterControl employeeSearchFilter">
+                    <span>Search employees</span>
+                    <input
+                      placeholder="Name or email"
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                    />
+                  </label>
+                  <label className="employeeFilterControl">
+                    <span>User Detail</span>
+                    <select
+                      value={employeeFieldId}
+                      onChange={(e) => {
+                        setEmployeeFieldId(e.target.value);
+                        setEmployeeOptionId("");
+                      }}
+                    >
+                      <option value="">Any User Detail</option>
+                      {employeeFilterFields.map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="employeeFilterControl">
+                    <span>Value</span>
+                    <select
+                      value={employeeOptionId}
+                      onChange={(e) => setEmployeeOptionId(e.target.value)}
+                      disabled={!employeeFilterField}
+                    >
+                      <option value="">
+                        {employeeFilterField ? "Any value" : "Select User Detail first"}
+                      </option>
+                      {employeeFilterOptions.map((option) => (
                         <option key={option.id} value={option.id}>
                           {option.value}
                         </option>
                       ))}
-                  </select>
-                </Field>
+                    </select>
+                  </label>
+                  <label className="employeeFilterControl">
+                    <span>Smart Group</span>
+                    <select
+                      value={employeeGroupId}
+                      onChange={(e) => setEmployeeGroupId(e.target.value)}
+                      disabled={!supportsSmartGroupMembership}
+                    >
+                      <option value="">
+                        {supportsSmartGroupMembership
+                          ? "Any Smart Group"
+                          : "Membership unavailable"}
+                      </option>
+                      {supportsSmartGroupMembership &&
+                        groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="employeeSelectToolbar">
+                  <strong>
+                    {door.selectedUserIds.length} employee
+                    {door.selectedUserIds.length === 1 ? "" : "s"} selected
+                  </strong>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        set(
+                          "selectedUserIds",
+                          Array.from(
+                            new Set([
+                              ...door.selectedUserIds,
+                              ...visibleEmployees.map((user) => user.userId),
+                            ]),
+                          ),
+                        )
+                      }
+                    >
+                      Select shown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set("selectedUserIds", [])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="employeeSetupList">
+                  {visibleEmployees.slice(0, 500).map((user) => {
+                    const matches = employeeBrandMatches(user);
+                    const selected = door.selectedUserIds.includes(user.userId);
+                    return (
+                      <label
+                        className={`employeeSetupRow ${
+                          selected ? "selected" : ""
+                        }`}
+                        key={user.userId}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() =>
+                            set(
+                              "selectedUserIds",
+                              toggle(door.selectedUserIds, user.userId),
+                            )
+                          }
+                        />
+                        <span className="avatar">{user.firstName?.[0]}</span>
+                        <span className="employeeSetupIdentity">
+                          <strong>
+                            {user.firstName} {user.lastName}
+                          </strong>
+                          <small>{user.email}</small>
+                        </span>
+                        <span className="employeeBrandStatus">
+                          {matches.length ? (
+                            <>
+                              <small>{subResourcesLabel}</small>
+                              <span>
+                                {matches
+                                  .map((option) => option.value)
+                                  .join(", ")}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <small>No matching {subResourceLabel}</small>
+                              <span className="warningText">No brand match</span>
+                            </>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {!visibleEmployees.length && (
+                    <p className="emptyBuilder">
+                      No employees match these filters.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {selectedWithoutBrand.length > 0 && (
+                <Notice tone="warning">
+                  {selectedWithoutBrand.length} selected employee
+                  {selectedWithoutBrand.length === 1 ? "" : "s"} have no
+                  matching Sub-job.
+                </Notice>
               )}
-              <div>
-                <Groups
-                  label={`Brand ${i + 1} groups`}
-                  groups={groups}
-                  segments={snapshot.smartGroupSegments || []}
-                  segmentsLoaded={!!snapshot.smartGroupSegmentsLoaded}
-                  fields={fields}
-                  createBlocked={blocked}
-                  blockMessage={groupBlockMessage(snapshot)}
-                  listFailed={listFailed}
-                  value={s.groupIds}
-                  onChange={(v) => update(i, { groupIds: v })}
-                  pending={door.newGroups || []}
-                  selectedKeys={s.newGroupKeys || []}
-                  onSelectedKeys={(keys) => update(i, { newGroupKeys: keys })}
-                  onCreatePending={addPending}
-                  onRemovePending={removePending}
-                />
-                <small>
-                  {s.groupIds.length || (s.newGroupKeys || []).length
-                    ? "Custom smart-group assignment"
-                    : "Inherits parent groups, description and location"}
-                </small>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="wizardStepBody finalReviewPage">
+              <div className="finalReviewHero">
+                <div>
+                  <span>Ready to create</span>
+                  <h3>{door.title}</h3>
+                  <p>
+                    {door.subJobs.length} {subResourcesLabel} ·{" "}
+                    {door.selectedUserIds.length} employees ·{" "}
+                    {plannedGroups.length} Smart Groups
+                  </p>
+                </div>
+                <span className="reviewReadyBadge">Ready</span>
+              </div>
+
+              <div className="finalReviewGrid">
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>1</span>
+                      <strong>{resourceLabel}</strong>
+                    </div>
+                  </div>
+                  <dl className="reviewDefinitionList">
+                    <div>
+                      <dt>{resourceLabel} name</dt>
+                      <dd>{door.title}</dd>
+                    </div>
+                    {door.code && (
+                      <div>
+                        <dt>{resourceLabel} code</dt>
+                        <dd>{door.code}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>Address</dt>
+                      <dd>{door.gps.address || "Not set"}</dd>
+                    </div>
+                    {(door.gps.latitude || door.gps.longitude) && (
+                      <div>
+                        <dt>Coordinates</dt>
+                        <dd>
+                          {door.gps.latitude || "—"}, {door.gps.longitude || "—"}
+                        </dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>Used in</dt>
+                      <dd>
+                        <div className="reviewPills">
+                          {selectedInstances.map((instance) => (
+                            <span key={`${instance.type}-${instance.id}`}>
+                              {instance.name}
+                              <small>{instance.type}</small>
+                            </span>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>2</span>
+                      <strong>{subResourcesLabel}</strong>
+                    </div>
+                    <b>{door.subJobs.length}</b>
+                  </div>
+                  <div className="reviewSimpleList">
+                    {door.subJobs.map((sub) => (
+                      <div key={sub.brandOptionId}>
+                        <strong>{sub.title}</strong>
+                        <span>Create</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="finalReviewSection finalReviewWide">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>3</span>
+                      <strong>Smart Groups</strong>
+                    </div>
+                    <b>{plannedGroups.length}</b>
+                  </div>
+                  <div className="reviewSmartGroupTable">
+                    <div className="reviewTableHead">
+                      <span>Smart Group</span>
+                      <span>Used for</span>
+                      <span>Action</span>
+                    </div>
+                    {plannedGroups.map((group) => (
+                      <div className="reviewTableRow" key={group.key}>
+                        <strong>{group.name}</strong>
+                        <span>
+                          {group.subJob
+                            ? `${subResourceLabel}: ${group.subJob}`
+                            : `Parent ${resourceLabel}`}
+                        </span>
+                        <span
+                          className={`previewActionBadge ${group.status.toLowerCase()}`}
+                        >
+                          {group.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedSegment && (
+                    <small className="reviewFootnote">
+                      Smart Group segment: {selectedSegment.name}
+                    </small>
+                  )}
+                </section>
+
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>4</span>
+                      <strong>User Detail updates</strong>
+                    </div>
+                  </div>
+                  <dl className="reviewDefinitionList">
+                    <div>
+                      <dt>{doorField?.name || "Eligibility"}</dt>
+                      <dd>
+                        {door.title.trim()
+                          ? `${existingDoorOption ? "Reuse" : "Add"} “${door.title.trim()}”`
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Employees updated</dt>
+                      <dd>{door.selectedUserIds.length}</dd>
+                    </div>
+                    <div>
+                      <dt>{brandField?.name || "Brand eligibility"}</dt>
+                      <dd>No values changed</dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="finalReviewSection">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>5</span>
+                      <strong>Employees</strong>
+                    </div>
+                    <b>{door.selectedUserIds.length}</b>
+                  </div>
+                  <div className="reviewEmployeeList">
+                    {selectedEmployees.map((user) => {
+                      const matches = employeeBrandMatches(user);
+                      return (
+                        <div key={user.userId}>
+                          <span>
+                            <strong>
+                              {user.firstName} {user.lastName}
+                            </strong>
+                            <small>{user.email}</small>
+                          </span>
+                          <span>
+                            {matches.length
+                              ? matches.map((option) => option.value).join(", ")
+                              : `No matching ${subResourceLabel}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="finalReviewSection finalReviewWide">
+                  <div className="finalReviewSectionHead">
+                    <div>
+                      <span>6</span>
+                      <strong>Qualification assignments</strong>
+                    </div>
+                  </div>
+                  <div className="reviewQualificationTree">
+                    <div>
+                      <span>Parent {resourceLabel}</span>
+                      <strong>{door.title}</strong>
+                      <div className="reviewPills">
+                        {plannedGroups.map((group) => (
+                          <span key={group.key}>{group.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                    {door.subJobs.map((sub) => {
+                      const group = plannedGroups.find(
+                        (candidate) => candidate.subJob === sub.title,
+                      );
+                      return (
+                        <div key={sub.brandOptionId}>
+                          <span>{subResourceLabel}</span>
+                          <strong>{sub.title}</strong>
+                          <div className="reviewPills">
+                            <span>{group?.name || "Pending"}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               </div>
             </div>
+          )}
+
+          <div className="wizardActions">
             <Button
               kind="ghost"
-              disabled={door.subJobs.length === 1}
-              onClick={() =>
-                set(
-                  "subJobs",
-                  door.subJobs.filter((_, idx) => idx !== i),
-                )
-              }
+              onClick={() => (step === 1 ? onCancel() : setStep(step - 1))}
             >
-              Remove brand {i + 1}
+              {step === 1 ? "Cancel" : "Back"}
             </Button>
+            <span />
+            {step < 4 ? (
+              <Button
+                disabled={!canContinue}
+                onClick={() => setStep(step + 1)}
+              >
+                Continue
+              </Button>
+            ) : (
+              <Button onClick={onPreview}>Create {resourceLabel}</Button>
+            )}
           </div>
-        ))}
-        <Button
-          kind="ghost"
-          onClick={() =>
-            set("subJobs", [
-              ...door.subJobs,
-              { title: "", groupIds: [], newGroupKeys: [] },
-            ])
-          }
-        >
-          + Add brand
-        </Button>
-        <div className="stickyAction">
-          <span>{door.subJobs.length} brand sub-job(s)</span>
-          <Button disabled={!valid} onClick={onPreview}>
-            Preview complete setup
-          </Button>
+        </div>
+
+          {step !== 4 && <aside className="connecteamLivePreview">
+            <div className="livePreviewHeader">
+              <div>
+                <span>Live preview</span>
+                <h3>Connecteam changes</h3>
+              </div>
+              <span className="livePreviewStep">Step {step}</span>
+            </div>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>{resourceLabel}</strong>
+                <span className="previewActionBadge create">Create</span>
+              </div>
+              <div className="previewPrimary">
+                {door.title.trim() || `${resourceLabel} name not entered`}
+              </div>
+              {door.code && <small>Code: {door.code}</small>}
+              {door.gps.address && <small>{door.gps.address}</small>}
+              {(door.gps.latitude || door.gps.longitude) && (
+                <small>
+                  Coordinates: {door.gps.latitude || "—"},{" "}
+                  {door.gps.longitude || "—"}
+                </small>
+              )}
+              <div className="previewPills">
+                {selectedInstances.map((instance) => (
+                  <span key={`${instance.type}-${instance.id}`}>
+                    {instance.type}: {instance.name}
+                  </span>
+                ))}
+                {!selectedInstances.length && (
+                  <span className="previewEmptyPill">
+                    No Job Scheduler / Time Clock selected
+                  </span>
+                )}
+              </div>
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>{subResourcesLabel}</strong>
+                <span>{door.subJobs.length}</span>
+              </div>
+              {door.subJobs.length ? (
+                <div className="previewList">
+                  {door.subJobs.map((sub) => (
+                    <div key={sub.brandOptionId}>
+                      <span>{sub.title}</span>
+                      <span className="previewActionBadge create">Create</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="previewEmpty">Select {subResourcesLabel} in Step 2.</div>
+              )}
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>Smart Groups</strong>
+                <span>{plannedGroups.length}</span>
+              </div>
+              {plannedGroups.length ? (
+                <div className="previewList previewGroupList">
+                  {plannedGroups.map((group) => (
+                    <div key={group.key}>
+                      <span title={group.name}>{group.name}</span>
+                      <span
+                        className={`previewActionBadge ${group.status.toLowerCase()}`}
+                      >
+                        {group.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="previewEmpty">
+                  Enter a {resourceLabel} name to preview Smart Groups.
+                </div>
+              )}
+              {selectedSegment && (
+                <small>Segment: {selectedSegment.name}</small>
+              )}
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>User Details</strong>
+              </div>
+              <div className="previewChangeRow">
+                <span>{doorField?.name || "Job eligibility"}</span>
+                <strong>
+                  {door.title.trim()
+                    ? `${existingDoorOption ? "Reuse" : "Add"} “${door.title.trim()}”`
+                    : "Waiting for {resourceLabel} name"}
+                </strong>
+              </div>
+              <div className="previewChangeRow">
+                <span>Employees updated</span>
+                <strong>{door.selectedUserIds.length}</strong>
+              </div>
+              <div className="previewChangeRow">
+                <span>Sub-job qualifications</span>
+                <strong>{totalSubJobAssignments}</strong>
+              </div>
+            </section>
+
+            <section className="previewSection">
+              <div className="previewSectionTitle">
+                <strong>Qualification assignments</strong>
+              </div>
+              {plannedGroups.length ? (
+                <>
+                  <div className="previewQualification">
+                    <small>Parent {resourceLabel}</small>
+                    <strong>
+                      {plannedGroups.map((group) => group.name).join(" + ")}
+                    </strong>
+                  </div>
+                  {door.subJobs.map((sub) => {
+                    const group = plannedGroups.find(
+                      (candidate) => candidate.subJob === sub.title,
+                    );
+                    return (
+                      <div className="previewQualification" key={sub.brandOptionId}>
+                        <small>{sub.title}</small>
+                        <strong>{group?.name || "Pending"}</strong>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div className="previewEmpty">
+                  Qualification assignments appear as you build the {resourceLabel}.
+                </div>
+              )}
+            </section>
+
+            {door.selectedUserIds.length > 0 && (
+              <section className="previewSection">
+                <div className="previewSectionTitle">
+                  <strong>Selected employees</strong>
+                  <span>{door.selectedUserIds.length}</span>
+                </div>
+                <div className="previewEmployeeNames">
+                  {selectedEmployees.slice(0, 6).map((user) => (
+                    <span key={user.userId}>
+                      {user.firstName} {user.lastName}
+                    </span>
+                  ))}
+                  {selectedEmployees.length > 6 && (
+                    <span>+{selectedEmployees.length - 6} more</span>
+                  )}
+                </div>
+              </section>
+            )}
+          </aside>}
         </div>
       </div>
     </>
   );
 }
+
 function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
   const [name, setName] = useState(""),
     [groups, setGroups] = useState([]),
@@ -1565,21 +2140,21 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
     return (
       <>
         <Notice tone="warning">
-          This door is no longer in the account scan.
+          This Job is no longer in the account scan.
         </Notice>
-        <Button onClick={onBack}>Back to doors</Button>
+        <Button onClick={onBack}>Back to Jobs</Button>
       </>
     );
   return (
     <>
       <div className="headingRow">
         <div>
-          <p className="eyebrow">Manage door</p>
+          <p className="eyebrow">Manage Job</p>
           <h2>{parent.title}</h2>
           <p>{parent.gps?.address || parent.code}</p>
         </div>
         <Button kind="ghost" onClick={onBack}>
-          Back to doors
+          Back to Jobs
         </Button>
       </div>
       <Notice>
@@ -1590,7 +2165,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
       {subJobs.length > 0 && (
         <div className="panel formPanel">
           <Button kind="ghost" onClick={() => setAdding(!adding)}>
-            {adding ? "Close brand form" : "+ Add brand to this door"}
+            {adding ? "Close Sub-job form" : "+ Add Sub-job"}
           </Button>
           {adding && (
             <>
@@ -1630,7 +2205,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
                 }}
               />
               <p className="muted">
-                With custom groups, the new brand copies the door’s description
+                With custom groups, the new Sub-job copies the Job’s description
                 and location. With no groups selected, it inherits all parent
                 settings.
               </p>
@@ -1662,7 +2237,7 @@ function ManageDoor({ parent, subJobs, snapshot, onBack, preview }) {
       ) : (
         <Notice tone="warning">
           This job has no sub-jobs. Connecteam does not allow adding sub-jobs to
-          a job created without them. Create a new door setup with its brands.
+          a Job created without them. Create a new Job with its Sub-jobs.
         </Notice>
       )}
     </>
@@ -1755,7 +2330,7 @@ function RepairTable({ snapshot, subJobs, preview }) {
           <input
             aria-label="Search sub-jobs"
             className="search"
-            placeholder="Search brands or doors…"
+            placeholder="Search Sub-jobs or Jobs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -1789,7 +2364,7 @@ function RepairTable({ snapshot, subJobs, preview }) {
                   />
                 </th>
                 <th>Brand / sub-job</th>
-                <th>Door</th>
+                <th>Job</th>
                 <th>Current assignment</th>
               </tr>
             </thead>
@@ -1872,6 +2447,216 @@ function RepairTable({ snapshot, subJobs, preview }) {
     </>
   );
 }
+function SmartGroupBindingDiagnostic({ snapshot, parents, subJobs }) {
+  const [goodGroupName, setGoodGroupName] = useState("Test");
+  const [generatedGroupName, setGeneratedGroupName] = useState(
+    "Door: Door 1 · Brand: Brand 1",
+  );
+  const [jobName, setJobName] = useState("Door 1");
+
+  const groups = snapshot.smartGroups || [];
+  const segments = snapshot.smartGroupSegments || [];
+  const allJobs = [...parents, ...subJobs];
+  const findGroup = (name) =>
+    groups.find(
+      (group) =>
+        String(group.name || "").toLowerCase() ===
+        String(name || "").trim().toLowerCase(),
+    );
+  const good = findGroup(goodGroupName);
+  const generated = findGroup(generatedGroupName);
+  const targetJobs = allJobs.filter(
+    (job) =>
+      String(job.title || "").toLowerCase() ===
+        String(jobName || "").trim().toLowerCase() ||
+      String(job.parentTitle || "").toLowerCase() ===
+        String(jobName || "").trim().toLowerCase(),
+  );
+  const refsFor = (group) => {
+    if (!group) return [];
+    return allJobs.filter((job) =>
+      (job.assign?.groupIds || []).some(
+        (id) => Number(id) === Number(group.id),
+      ),
+    );
+  };
+  const segmentName = (group) =>
+    segments.find(
+      (segment) =>
+        Number(segment.id) === Number(group?.groupSegmentId ?? group?.segmentId),
+    )?.name || "Unknown / not returned";
+  const groupRows = [
+    ["Group ID", good?.id, generated?.id],
+    [
+      "Segment ID",
+      good?.groupSegmentId ?? good?.segmentId,
+      generated?.groupSegmentId ?? generated?.segmentId,
+    ],
+    ["Segment", segmentName(good), segmentName(generated)],
+    [
+      "Automatically created",
+      String(Boolean(good?.isAutomaticallyCreated)),
+      String(Boolean(generated?.isAutomaticallyCreated)),
+    ],
+    ["Users in group", good?.numberOfUsers, generated?.numberOfUsers],
+    [
+      "Admin user IDs",
+      Array.isArray(good?.adminUserIds)
+        ? good.adminUserIds.join(", ") || "[]"
+        : "Not returned",
+      Array.isArray(generated?.adminUserIds)
+        ? generated.adminUserIds.join(", ") || "[]"
+        : "Not returned",
+    ],
+  ];
+
+  return (
+    <div className="panel diagnosticPanel">
+      <div className="panelToolbar">
+        <div>
+          <strong>Smart Group binding diagnostic</strong>
+          <small>
+            Compare a known-good Connecteam group with a Headkount-created group
+            and see exactly where each group ID is assigned.
+          </small>
+        </div>
+      </div>
+      <div className="formGrid three">
+        <Field label="Known-good Smart Group">
+          <input
+            value={goodGroupName}
+            onChange={(e) => setGoodGroupName(e.target.value)}
+          />
+        </Field>
+        <Field label="Headkount Smart Group">
+          <input
+            value={generatedGroupName}
+            onChange={(e) => setGeneratedGroupName(e.target.value)}
+          />
+        </Field>
+        <Field label="Door / job">
+          <input value={jobName} onChange={(e) => setJobName(e.target.value)} />
+        </Field>
+      </div>
+
+      {(!good || !generated) && (
+        <Notice tone="warning">
+          {!good && <>Could not find Smart Group “{goodGroupName}”. </>}
+          {!generated && <>Could not find Smart Group “{generatedGroupName}”.</>}
+        </Notice>
+      )}
+
+      {good && generated && (
+        <>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Property</th>
+                  <th>{good.name}</th>
+                  <th>{generated.name}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupRows.map(([label, left, right]) => (
+                  <tr key={label}>
+                    <td><strong>{label}</strong></td>
+                    <td>{left ?? "Not returned"}</td>
+                    <td className={String(left ?? "") !== String(right ?? "") ? "diagnosticDiff" : ""}>
+                      {right ?? "Not returned"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="diagnosticOwnerCheck">
+            <strong>Current account identity</strong>
+            <code>
+              {JSON.stringify(
+                {
+                  id:
+                    snapshot.me?.userId ??
+                    snapshot.me?.id ??
+                    snapshot.me?.ownerId ??
+                    null,
+                  role:
+                    snapshot.me?.role ??
+                    snapshot.me?.userType ??
+                    snapshot.me?.type ??
+                    null,
+                },
+                null,
+                2,
+              )}
+            </code>
+            <small>
+              If Admin user IDs are returned above, the owner/current-user ID
+              should normally be present on groups that are visible in job
+              qualification pickers.
+            </small>
+          </div>
+
+          <div className="diagnosticRefs">
+            <div>
+              <strong>{good.name} is referenced by</strong>
+              {refsFor(good).length ? (
+                refsFor(good).map((job) => (
+                  <code key={job.jobId}>
+                    {job.parentTitle ? `${job.parentTitle} → ` : ""}
+                    {job.title} · {job.jobId}
+                  </code>
+                ))
+              ) : (
+                <span>No loaded job/sub-job references this group ID.</span>
+              )}
+            </div>
+            <div>
+              <strong>{generated.name} is referenced by</strong>
+              {refsFor(generated).length ? (
+                refsFor(generated).map((job) => (
+                  <code key={job.jobId}>
+                    {job.parentTitle ? `${job.parentTitle} → ` : ""}
+                    {job.title} · {job.jobId}
+                  </code>
+                ))
+              ) : (
+                <span>No loaded job/sub-job references this group ID.</span>
+              )}
+            </div>
+          </div>
+
+          <div className="diagnosticJobs">
+            <strong>Loaded records matching “{jobName}”</strong>
+            {targetJobs.length ? (
+              targetJobs.map((job) => (
+                <pre key={job.jobId}>
+                  {JSON.stringify(
+                    {
+                      title: job.title,
+                      jobId: job.jobId,
+                      parentId: job.parentId || null,
+                      parentTitle: job.parentTitle || null,
+                      useParentData: job.useParentData,
+                      assign: job.assign || null,
+                      instanceIds: job.instanceIds || [],
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              ))
+            ) : (
+              <span>No matching job/sub-job loaded.</span>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Assignments({ snapshot, preview }) {
   const [fieldId, setFieldId] = useState(""),
     [optionId, setOptionId] = useState(""),
@@ -1896,9 +2681,9 @@ function Assignments({ snapshot, preview }) {
       <div className="headingRow">
         <div>
           <p className="eyebrow">Employee profiles</p>
-          <h2>Employee door assignments</h2>
+          <h2>Employee Job eligibility</h2>
           <p>
-            Update a door dropdown value on employee profiles. This is separate
+            Update a Job eligibility User Detail on employee profiles. This is separate
             from job smart-group eligibility.
           </p>
         </div>
@@ -1921,7 +2706,7 @@ function Assignments({ snapshot, preview }) {
               ))}
             </select>
           </Field>
-          <Field label="Door value">
+          <Field label="Job eligibility value">
             <select
               value={optionId}
               onChange={(e) => setOptionId(e.target.value)}
@@ -1938,7 +2723,7 @@ function Assignments({ snapshot, preview }) {
         <div className="inlineCreate">
           <input
             aria-label="New dropdown value"
-            placeholder="New door dropdown value"
+            placeholder="New Job eligibility value"
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
           />
@@ -1967,7 +2752,7 @@ function Assignments({ snapshot, preview }) {
         </Field>
         {field && !field.isMultiSelect && mode === "add" && (
           <Notice tone="warning">
-            This field allows one value. Applying a new door will replace the
+            This field allows one value. Applying a new Job eligibility value will replace the
             employee’s current value.
           </Notice>
         )}
@@ -2078,8 +2863,8 @@ function Preview({ plan, onCancel, onConfirm }) {
           <p className="eyebrow">Fresh Connecteam preview</p>
           <h3 id="preview-title">
             Review{" "}
-            {plan.action === "createDoor"
-              ? "door setup"
+            {["createDoor", "createQualifiedDoor"].includes(plan.action)
+              ? "Job setup"
               : ["repairSubJobs", "addBrand"].includes(plan.action)
                 ? "brand assignments"
                 : "employee field changes"}
@@ -2167,6 +2952,103 @@ function Preview({ plan, onCancel, onConfirm }) {
               </li>
             ))}
           </ul>
+        </>
+      )}
+      {plan.action === "createQualifiedDoor" && (
+        <>
+          <h3>{plan.doorName}</h3>
+          <p>
+            <strong>Door eligibility field:</strong> {plan.doorField.name}
+            <br />
+            <strong>Brand eligibility field:</strong> {plan.brandField.name}
+            <br />
+            <strong>Door option:</strong>{" "}
+            {plan.needsDoorOption
+              ? `Create “${plan.doorName}”`
+              : `Reuse “${plan.doorName}”`}
+          </p>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job / sub-job</th>
+                  <th>Qualification</th>
+                  <th>Smart group</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <strong>{plan.doorName}</strong>
+                  </td>
+                  <td>Door only</td>
+                  <td>
+                    {plan.groupSpecs.find((spec) => spec.key === "door")?.name}
+                    <small>
+                      {plan.groupSpecs.find((spec) => spec.key === "door")?.existing
+                        ? "Reuse existing Headkount group"
+                        : "Create dynamic smart group"}
+                    </small>
+                  </td>
+                </tr>
+                {plan.brandOptions.map(({ title, option }) => {
+                  const spec = plan.groupSpecs.find(
+                    (candidate) => candidate.key === `brand:${title}`,
+                  );
+                  return (
+                    <tr key={title}>
+                      <td>
+                        {plan.doorName} → <strong>{title}</strong>
+                      </td>
+                      <td>
+                        {plan.doorName} AND {option.value}
+                      </td>
+                      <td>
+                        {spec?.name}
+                        <small>
+                          {spec?.existing
+                            ? "Reuse existing Headkount group"
+                            : "Create dynamic smart group"}
+                        </small>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="creationReview previewEmployeeReview">
+            <strong>Employee assignment</strong>
+            <span>
+              {plan.employeeRecords?.length || 0} employee(s) will receive
+              “{plan.doorName}” in {plan.doorField.name}
+            </span>
+            <span>
+              {(plan.employeeRecords || []).reduce(
+                (total, record) =>
+                  total + (record.matchingBrandOptionIds?.length || 0),
+                0,
+              )}{" "}
+              employee-to-brand qualification(s) will become active
+            </span>
+            {(plan.employeeRecords || []).some(
+              (record) => !record.matchingBrandOptionIds?.length,
+            ) && (
+              <span className="warningText">
+                {
+                  plan.employeeRecords.filter(
+                    (record) => !record.matchingBrandOptionIds?.length,
+                  ).length
+                }{" "}
+                selected employee(s) currently match none of this Door’s brands
+              </span>
+            )}
+          </div>
+          <Notice>
+            Headkount will add the Door value to these employees. Users then
+            move into or out of the generated Smart Groups automatically as
+            their Door and Brand user-detail values change.
+          </Notice>
         </>
       )}
       {plan.action === "createDoor" && (
@@ -2361,25 +3243,39 @@ function Preview({ plan, onCancel, onConfirm }) {
                           ) === index,
                       )
                       .map((spec) => spec.segment),
-                    smartGroups: plan.groupCreates.map(groupCreatePayload),
+                    createdSmartGroups: plan.groupCreates.map(groupCreatePayload),
                   }
                 : {}),
-              assignment: JSON.parse(
-                JSON.stringify(
-                  plan.body || plan.records.map((record) => record.after),
-                  (key, value) => {
-                    if (key !== "groupIds" || !Array.isArray(value))
-                      return value;
-                    const names = new Map(
-                      (plan.groupCreates || []).map((spec) => [
-                        spec.tempId,
-                        `new:${spec.name}`,
-                      ]),
-                    );
-                    return value.map((id) => names.get(id) || id);
-                  },
-                ),
-              ),
+              ...(plan.action === "createQualifiedDoor"
+                ? {
+                    doorOption: plan.needsDoorOption
+                      ? { fieldId: plan.doorField.id, value: plan.doorName }
+                      : { reuseOptionId: plan.doorOption?.id },
+                    smartGroups: plan.groupSpecs.map((spec) => ({
+                      name: spec.name,
+                      reuseGroupId: spec.existing?.id || null,
+                      brandOptionId: spec.brandOptionId,
+                    })),
+                    instances: plan.requestedInstances,
+                  }
+                : {
+                    assignment: JSON.parse(
+                      JSON.stringify(
+                        plan.body || plan.records.map((r) => r.after),
+                        (key, value) => {
+                          if (key !== "groupIds" || !Array.isArray(value))
+                            return value;
+                          const names = new Map(
+                            (plan.groupCreates || []).map((spec) => [
+                              spec.tempId,
+                              `new:${spec.name}`,
+                            ]),
+                          );
+                          return value.map((id) => names.get(id) || id);
+                        },
+                      ),
+                    ),
+                  }),
             },
             null,
             2,
@@ -2391,7 +3287,7 @@ function Preview({ plan, onCancel, onConfirm }) {
           Back to editing
         </Button>
         <Button onClick={onConfirm}>
-          {plan.action === "createDoor"
+          {["createDoor", "createQualifiedDoor"].includes(plan.action)
             ? "Create complete setup"
             : "Apply reviewed changes"}
         </Button>
@@ -2410,34 +3306,47 @@ function Results({ report }) {
     link.click();
     URL.revokeObjectURL(url);
   }
+
+  if (report.complete) {
+    return (
+      <div className="resultBanner success">
+        <span className="resultIcon">✓</span>
+        <div>
+          <strong>Changes saved successfully</strong>
+          <small>Connecteam has been updated and verified.</small>
+        </div>
+        <details>
+          <summary>Details</summary>
+          <ul>
+            {report.results.map((result, index) => (
+              <li key={index}>{result.label || result.jobId || "Updated"}</li>
+            ))}
+          </ul>
+          <button type="button" onClick={download}>
+            Download results
+          </button>
+        </details>
+      </div>
+    );
+  }
+
   return (
-    <Notice tone={report.complete ? "success" : "warning"}>
-      <strong>
-        {report.complete
-          ? "Operation completed."
-          : "Operation needs attention. Inspect the results before retrying."}
-      </strong>
-      <ul>
-        {report.results.map((r, i) => (
-          <li key={i}>
-            {r.label || r.jobId || "Operation"}: <strong>{r.status}</strong>
-            {(r.requestId || r.details?.requestId) && (
-              <small>Request ID: {r.requestId || r.details.requestId}</small>
-            )}
-            {r.note && <small>{r.note}</small>}
-            {r.error && <pre>{r.error}</pre>}
-            {r.details && (
-              <details>
-                <summary>Connecteam error details</summary>
-                <pre>{JSON.stringify(r.details, null, 2)}</pre>
-              </details>
-            )}
-          </li>
-        ))}
-      </ul>
-      <Button kind="ghost" onClick={download}>
-        Download results
-      </Button>
+    <Notice tone="warning">
+      <strong>Some changes need attention.</strong>
+      <details open>
+        <summary>View details</summary>
+        <ul>
+          {report.results.map((result, index) => (
+            <li key={index}>
+              {result.label || result.jobId || "Operation"}
+              {result.error && <pre>{result.error}</pre>}
+            </li>
+          ))}
+        </ul>
+        <Button kind="ghost" onClick={download}>
+          Download results
+        </Button>
+      </details>
     </Notice>
   );
 }
